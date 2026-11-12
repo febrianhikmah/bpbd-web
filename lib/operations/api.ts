@@ -1,3 +1,4 @@
+import { logisticsView, prepareLogisticsTransaction } from './logistics.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -40,9 +41,9 @@ export async function handleOperations(request: Request) {
         const bytes = await client.query('SELECT content FROM bpbd_source_files WHERE id=$1', [module]);
         result = new Response(new Uint8Array(bytes.rows[0].content), { headers: { 'Content-Type': file.mime, 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}` } });
       }
-    } else if (kind === 'assets' && request.method === 'GET') {
+    } else if ((kind === 'assets' || kind === 'k1') && request.method === 'GET') {
       requireThat(['index.html', 'app.js', 'style.css'].includes(module) && parts.length === 2, 'Berkas tidak ditemukan.', 404);
-      const content = await readFile(join(process.cwd(), 'integration/kelompok3', module), 'utf8');
+      const content = await readFile(join(process.cwd(), 'integration', kind === 'k1' ? 'kelompok1' : 'kelompok3', module), 'utf8');
       result = new Response(content, { headers: { 'Content-Type': ({ 'index.html': 'text/html;charset=utf-8', 'app.js': 'text/javascript;charset=utf-8', 'style.css': 'text/css;charset=utf-8' } as Record<string, string>)[module],
         'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; object-src 'none'" } });
     } else if (kind === 'config' && request.method === 'GET') {
@@ -51,7 +52,14 @@ export async function handleOperations(request: Request) {
     } else {
       const records = await readRecords(client);
       const visible = (m: string) => records[m].map(r => visibleRow(actor.role, r));
-      if (kind === 'records') {
+      if (kind === 'logistik-data' && request.method === 'GET') result = json(logisticsView(records,actor.role));
+      else if (kind === 'logistik-transaksi' && request.method === 'POST') {
+        const body=JSON.parse((await boundedBytes(request,1024*1024)).toString('utf8'));
+        const batch=prepareLogisticsTransaction(body,records,actor);
+        for(const row of batch.rows) await saveRecord(client,batch.direction,row);
+        if(!batch.duplicate) await audit(client,actor,'Transaksi logistik K1 disimpan',String(body.requestId));
+        result=json({saved:batch.rows.length,duplicate:batch.duplicate},201);
+      } else if (kind === 'records') {
         allowed(actor, module, write);
         if (request.method === 'GET') result = json(visible(module));
         else {

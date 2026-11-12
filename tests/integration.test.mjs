@@ -105,3 +105,28 @@ test('CSV/XLSX preview and commit preserve IDs, reject duplicate batch and valid
   assert.equal((await ok('SEK','records/dokumen'))[0].tanggal,'2026-11-04');
   const bad=await call('SEK','records/dokumen','POST',{nama:'Salah',keluaran:modules.find(m=>m.id==='dokumen').fields.find(f=>f.key==='keluaran').options[0],tanggal:'2026-02-31'});assert.equal(bad.status,400);
 });
+
+test('K1 dashboard and K3 ledger share atomic stock, duplicate protection and field permissions',async()=>{
+  const token=()=>randomBytes(18).toString('hex');
+  await ok('KL','records/barang','POST',{id:'K1TEST-A',nama:'Barang A',satuan:'pcs',kategori:'Uji'},201);
+  await ok('KL','records/barang','POST',{id:'K1TEST-B',nama:'Barang B',satuan:'dus',kategori:'Uji'},201);
+  await ok('KL','records/masuk','POST',{tanggal:'2026-11-11',barang:'K1TEST-A',jumlah:5,sumber:'APBD',jenis:'Penerimaan'},201);
+  const input={requestId:token(),jenis:'Masuk',tanggal:'2026-11-11',sumber_barang:'Donor uji',items:[{barang:'K1TEST-A',jumlah:7},{barang:'K1TEST-B',jumlah:9}]};
+  await ok('KL','logistik-transaksi','POST',input,201);
+  assert.equal((await ok('KL','logistik-transaksi','POST',input,201)).duplicate,true);
+  assert.equal((await call('KL','logistik-transaksi','POST',{...input,items:[{barang:'K1TEST-A',jumlah:1}]})).status,409);
+  const before=await ok('KL','logistik-data');assert.equal(before.barang.find(b=>b.id==='K1TEST-A').saldo,12);
+  for(const role of ['PK','RR','SEK']){assert.equal((await ok(role,'logistik-data')).writable,false);assert.equal((await call(role,'logistik-transaksi','POST',input)).status,403);assert.equal((await call(role,'k1/index.html')).status,200);}
+  for(const role of ['PEN','ADM'])assert.equal((await call(role,'logistik-data')).status,403);
+  const out={requestId:token(),jenis:'Keluar',tanggal:'2026-11-11',tujuan_penggunaan:'Distribusi',kecamatan:'Genuk',items:[{barang:'K1TEST-A',jumlah:8},{barang:'K1TEST-B',jumlah:10}]};
+  assert.equal((await call('KL','logistik-transaksi','POST',out)).status,409);
+  assert.equal((await ok('KL','logistik-data')).barang.find(b=>b.id==='K1TEST-A').saldo,12);
+  out.items[1].jumlah=2;await ok('KL','logistik-transaksi','POST',out,201);
+  const view=await ok('PK','logistik-data');assert.equal(view.barang.find(b=>b.id==='K1TEST-A').saldo,4);assert.equal(view.barang.find(b=>b.id==='K1TEST-B').saldo,7);
+  assert.equal(view.transactions.filter(r=>r.transaction_id===out.requestId).length,2);
+  assert.equal(view.transactions.find(r=>r.transaction_id===out.requestId&&r.barang==='K1TEST-A').jumlah,8);
+  const stock=await ok('KL','stock');assert.equal(stock.filter(r=>r.barang==='K1TEST-A').reduce((s,r)=>s+r.saldo,0),4);
+  assert.ok(!JSON.stringify(view).includes('EVENT-1'));
+  const simultaneous=await Promise.all([1,2].map(()=>call('KL','logistik-transaksi','POST',{...out,requestId:token(),items:[{barang:'K1TEST-A',jumlah:3}]})));
+  assert.deepEqual(simultaneous.map(r=>r.status).sort(),[201,409]);
+});

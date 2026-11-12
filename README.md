@@ -1,5 +1,8 @@
 # SIAGA — Sistem Data Kebencanaan BPBD Kota Semarang
 
+**Revisi terbaru 11 November 2026:** menu logistik disatukan ke Dashboard Logistik, dengan tampilan dan alur transaksi Kelompok 1. Lihat [catatan revisi dan rekonsiliasi data](docs/REVISI-KELOMPOK1.md).
+
+
 Aplikasi gabungan Kelompok 1, 2, dan 3 dengan satu login akun individual dan PostgreSQL lokal. Kelompok 2 (`bpbd-web`) menjadi aplikasi utama; modul penelitian dipertahankan, dashboard/logistik Kelompok 1 diadaptasi, dan antarmuka serta alur operasional Kelompok 3 diintegrasikan.
 
 **Panduan hasil penggabungan:** [Integrasi Kelompok 1–3](docs/INTEGRASI-KELOMPOK.md), termasuk hak akses, migrasi data, cadangan, pemulihan, dan batas lingkup penelitian.
