@@ -8,6 +8,7 @@ import { csv, validateDocument } from '../bpbd/files';
 import { ApiError, mergeStore, requireThat, scopeStore } from './policy.ts';
 import { readStore, writeStore } from './repository.ts';
 import { tokenHash, verifyPassword } from './passwords.ts';
+import { researchLibrary } from '../bpbd/research-library.ts';
 
 const cookieName = 'bpbd_session';
 const sessionSeconds = 8 * 60 * 60;
@@ -110,6 +111,22 @@ export async function handleApi(request: Request) {
       const user = await account(client, request, store);
       if (path === 'state' && request.method === 'GET') {
         result = response({ store: scopeStore(store, user), revision: snapshot.revision, userId: user.id });
+      } else if (path === 'library' && request.method === 'GET') {
+        requireThat(user.status === 'Aktif', 'Library hanya tersedia untuk akun aktif.');
+        const ids = store.research.flatMap(r => r.versions.map(v => v.fileId));
+        const files = await client.query('SELECT id FROM bpbd_files WHERE id=ANY($1::text[])', [ids]);
+        result = response(researchLibrary(store, new Set(files.rows.map(r => r.id))));
+      } else if (/^library\/[\w-]+\/[\w-]+\/file$/.test(path) && request.method === 'GET') {
+        requireThat(user.status === 'Aktif', 'Library hanya tersedia untuk akun aktif.');
+        const [,researchId,versionId] = path.split('/');
+        const version = store.research.find(r => r.id === researchId)?.versions.find(v => v.id === versionId);
+        requireThat(version, 'Arsip hasil penelitian tidak ditemukan.', 404);
+        const file = (await client.query('SELECT name,mime,content FROM bpbd_files WHERE id=$1', [version.fileId])).rows[0];
+        requireThat(file, 'Dokumen arsip tidak tersedia.', 404);
+        result = new Response(new Uint8Array(file.content), { headers: {
+          'Content-Type': file.mime, 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+          'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+        } });
       } else if (/^research\/[\w-]+\/csv$/.test(path) && request.method === 'GET') {
         const research = store.research.find(r => r.id === path.split('/')[1] && r.owner === user.id);
         requireThat(user.role === 'PEN' && user.status === 'Aktif' && research, 'Data penelitian tidak tersedia.', 403);

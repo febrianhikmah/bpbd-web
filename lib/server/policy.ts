@@ -1,6 +1,6 @@
 import { isDeepStrictEqual as equal } from 'node:util';
 import { z } from 'zod';
-import { approvedGroups, authorizedResearchEntries, requestedResearchEntries, researchDataValidated, normalizePhone, canEdit, canRead, filterEntries, groups, isReviewer, researchStatuses, referenceDate, timestamp, uid, type Entry, type Research, type Store, type User } from '../bpbd/model.ts';
+import { approvedGroups, authorizedResearchEntries, requestedResearchEntries, normalizePhone, canEdit, canRead, filterEntries, groups, isReviewer, researchStatuses, referenceDate, timestamp, uid, type Entry, type Research, type Store, type User } from '../bpbd/model.ts';
 
 export class ApiError extends Error {
   status: number;
@@ -62,9 +62,9 @@ function validateResearch(store: Store, actor: User, old: Research | undefined, 
       automaticValidation = true;
     } else if (!equal(old.versions, next.versions)) {
       fields(old, next, ['versions', 'complete', 'history']);
-      requireThat(approvedGroups(old).length > 0 && next.complete === false && next.versions.length === old.versions.length + 1 && equal(next.versions.slice(0, -1), old.versions));
+      requireThat(approvedGroups(old).length > 0 && next.complete === true && next.versions.length === old.versions.length + 1 && equal(next.versions.slice(0, -1), old.versions));
       const version = next.versions.at(-1)!;
-      requireThat(version.review === 'Belum Ditinjau' && version.note === '' && version.summary.trim() && version.feedback.trim());
+      requireThat(version.review === 'Sudah' && version.note === '' && version.summary.trim() && version.feedback.trim());
       version.at = timestamp();
     } else {
       fields(old, next, ['extension', 'history']);
@@ -76,14 +76,10 @@ function validateResearch(store: Store, actor: User, old: Research | undefined, 
     requireThat(actor.role === 'ADM', 'Seluruh verifikasi penelitian hanya dapat dilakukan Admin.');
     if (actor.role === 'ADM') {
       if (!equal(old.versions, next.versions)) {
-        fields(old, next, ['versions', 'history']);
-        requireThat(old.versions.length > 0 && next.versions.length === old.versions.length && equal(old.versions.slice(0, -1), next.versions.slice(0, -1)));
-        fields(old.versions.at(-1)!, next.versions.at(-1)!, ['review', 'note']);
-        requireThat(['Sedang Ditinjau', 'Perlu Perbaikan', 'Selesai Ditinjau'].includes(next.versions.at(-1)!.review) && next.versions.at(-1)!.note.trim());
-      } else if (old.deadline !== next.deadline || !equal(old.extension, next.extension) || old.complete !== next.complete) {
-        fields(old, next, ['deadline', 'history', 'extension', 'complete']);
+        requireThat(false, 'Status hasil otomatis mengikuti unggahan; review terpisah tidak digunakan.');
+      } else if (old.deadline !== next.deadline || !equal(old.extension, next.extension)) {
+        fields(old, next, ['deadline', 'history', 'extension']);
         requireThat(/^\d{4}-\d{2}-\d{2}$/.test(next.deadline) && Number.isFinite(Date.parse(next.deadline)) && new Date(next.deadline).toISOString().slice(0,10) === next.deadline, 'Tenggat tidak valid.', 400);
-        requireThat(!next.complete || next.versions.length > 0, 'Hasil penelitian belum diunggah.', 400);
       } else if (!equal(old.decisions, next.decisions)) {
         fields(old, next, ['decisions', 'status', 'download', 'accessEnd', 'history']);
         const decision = next.decisions.ADM;
@@ -95,20 +91,13 @@ function validateResearch(store: Store, actor: User, old: Research | undefined, 
         decision.validatedRows = decision.status === 'Disetujui' ? requestedResearchEntries(store, old, decision.groups).map(e => ({ id:e.id, version:e.version })) : [];
         next.validation = { at:timestamp(), rows:requestedResearchEntries(store, old).map(e => ({ id:e.id, version:e.version })) };
         next.status = decision.status;
-        next.download = decision.status === 'Disetujui' && decision.download === true;
+        decision.download = decision.status === 'Disetujui';
+        next.download = decision.download;
         next.accessEnd = decision.accessEnd || old.accessEnd;
-        // A changed decision requires explicit activation of the resulting permission.
-        next.access = 'Belum Aktif';
+        // One Admin decision grants every requested dataset and download together.
+        next.access = decision.status === 'Disetujui' ? 'Aktif' : 'Belum Aktif';
       } else {
-        fields(old, next, ['access', 'accessEnd', 'download', 'history']);
-        requireThat(['Aktif', 'Dicabut', 'Berakhir', 'Belum Aktif'].includes(next.access));
-        if (next.access === 'Aktif') {
-          const grants = Object.values(old.decisions).filter(d => d.status === 'Disetujui');
-          requireThat(old.status === 'Disetujui' && grants.length > 0);
-          requireThat(researchDataValidated(store, old), 'Validasi baris data perlu diperbarui sebelum izin diaktifkan.');
-          requireThat(next.accessEnd >= referenceDate && grants.every(d => next.accessEnd <= (d.accessEnd || old.accessEnd)), 'Masa izin melampaui keputusan persetujuan.');
-          requireThat(!next.download || grants.every(d => d.download === true), 'Hak unduh belum disetujui.');
-        }
+        fields(old, next, ['history']);
       }
     }
   }

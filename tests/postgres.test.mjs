@@ -142,9 +142,38 @@ test('WhatsApp worker previews without sending and deduplicates accepted weekly 
   const run=(args=[])=>execFileSync(process.execPath,['--import','./tests/mock-whatsapp.mjs','scripts/research-reminders.ts',...args],{env:workerEnv,timeout:30000,encoding:'utf8',windowsHide:true});
   assert.match(run(),/PRATINJAU/);
   assert.equal((await testPool.query('SELECT count(*)::int AS count FROM bpbd_research_reminders')).rows[0].count,0);
-  run(['--send']);run(['--send']);
-  const rows=(await testPool.query('SELECT state,message_id FROM bpbd_research_reminders')).rows;
+  run(['--send']);
+  const sent=(await testPool.query('SELECT count(*)::int AS count FROM bpbd_research_reminders')).rows[0].count;
+  run(['--send']);
+  assert.equal((await testPool.query('SELECT count(*)::int AS count FROM bpbd_research_reminders')).rows[0].count,sent);
+  const rows=(await testPool.query('SELECT state,message_id FROM bpbd_research_reminders WHERE research_id=$1',['RSET-001'])).rows;
   assert.equal(rows.length,1);assert.equal(rows[0].state,'accepted');assert.equal(rows[0].message_id,'wamid.integration-test');
+});
+
+test('Global library shares result versions with active accounts but keeps supporting letters private',async()=>{
+ const owner=await login('nadia@peneliti.example'),admin=await login('adm@bpbd.example');
+ const bytes=Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF');
+ for(const id of ['RESULT-ARCHIVE-1','RESULT-ARCHIVE-2','PRIVATE-SUPPORT']){
+  const uploaded=await owner.put(`/api/bpbd/files/${id}`,{headers:{'X-File-Name':id+'.pdf','Content-Type':'application/pdf'},data:bytes});assert.equal(uploaded.status(),201,await uploaded.text());
+ }
+ const before=await state(owner),request=before.store.research.find(r=>r.id==='RSET-001');
+ // A missing upload cannot become a successful result or a Library entry.
+ await save(owner,before,s=>{const r=s.research.find(r=>r.id===request.id);r.complete=true;r.versions.push({id:'INVALID',at:'',fileId:'FILE-MISSING',filename:'missing.pdf',summary:'Missing',feedback:'x',review:'Sudah',note:''});},403);
+ for(const number of [1,2])await save(owner,await state(owner),s=>{const r=s.research.find(r=>r.id===request.id);r.complete=true;r.versions.push({id:`ARCHIVE-V${number}`,at:'',fileId:`RESULT-ARCHIVE-${number}`,filename:`hasil-${number}.pdf`,summary:`Ringkasan ${number}`,feedback:'PRIVATE FEEDBACK',review:'Sudah',note:''});});
+ const readers=[];for(const email of ['adm@bpbd.example','pk@bpbd.example','kl@bpbd.example','rr@bpbd.example','sek@bpbd.example'])readers.push(await login(email));
+ const anotherResearcher=await context();assert.equal((await anotherResearcher.post('/api/bpbd/login',{data:{email:'integration@contoh.test',password:'PenelitiUji123!'}})).status(),200);readers.push(anotherResearcher);
+ for(const reader of readers){
+  const list=await reader.get('/api/bpbd/library');assert.equal(list.status(),200);const archive=(await list.json()).find(r=>r.id===request.id);assert.deepEqual(archive.versions.map(v=>v.id),['ARCHIVE-V2','ARCHIVE-V1']);
+  assert.ok(!JSON.stringify(archive).includes('PRIVATE'));assert.ok(!JSON.stringify(archive).includes('requestedGroups'));
+  for(const version of ['ARCHIVE-V1','ARCHIVE-V2']){const file=await reader.get(`/api/bpbd/library/${request.id}/${version}/file`);assert.equal(file.status(),200);assert.deepEqual(await file.body(),bytes);}
+  assert.equal((await reader.get(`/api/bpbd/library/${request.id}/PRIVATE-SUPPORT/file`)).status(),404);
+ }
+ assert.equal((await readers[1].get('/api/bpbd/files/PRIVATE-SUPPORT')).status(),403);
+ assert.equal((await readers.at(-1).get(`/api/bpbd/research/${request.id}/csv`)).status(),403);
+ assert.ok((await state(readers.at(-1))).store.research.every(r=>r.owner!==request.owner));
+ const pending=await login('arif@peneliti.example');assert.equal((await pending.get('/api/bpbd/library')).status(),403);assert.equal((await pending.get(`/api/bpbd/library/${request.id}/ARCHIVE-V1/file`)).status(),403);
+ const anon=await context();assert.equal((await anon.get(`/api/bpbd/library/${request.id}/ARCHIVE-V1/file`)).status(),401);
+ const snapshot=await state(admin);await save(admin,snapshot,s=>{const r=s.research.find(r=>r.id===request.id);r.versions.at(-1).review='Perlu Perbaikan';r.versions.at(-1).note='Legacy review';},403);
 });
 
 test('Browser workflows use PostgreSQL, including login, forms, import, reports and research', { timeout: 360000 }, async () => {

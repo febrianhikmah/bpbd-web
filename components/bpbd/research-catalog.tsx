@@ -35,7 +35,7 @@ export function ShowResearchData() {
 
   return <>
     <PageHead title="Data" subtitle="Pilih kategori dan dataset untuk melihat contoh data per kecamatan sebelum mengajukan permohonan." />
-    <Notice>Pratinjau dan jumlah baris di halaman ini menggunakan data contoh sintetis. Data sebenarnya tersedia setelah permohonan disetujui dan izin akses diaktifkan.</Notice>
+    <Notice>Pratinjau dan jumlah baris di halaman ini menggunakan data contoh sintetis. Data sebenarnya tersedia setelah permohonan disetujui Admin, tanpa aktivasi izin tambahan.</Notice>
     <div className={styles.layout}>
       <nav className={styles.navigation} aria-label="Kategori dan dataset penelitian">
         <div className={styles.navHeading}>

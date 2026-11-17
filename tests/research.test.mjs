@@ -45,13 +45,13 @@ test('Submission automatically validates all rows and rejects the removed reques
   submitted.research.at(-1).validation={at:'fake',rows:[]};
   assert.throws(()=>mergeStore(store,submitted,actor,'Palsu',request.id),/dibuat otomatis/);
 });
-test('Only Admin decides all requested datasets, with canonical row validation and a separate activation', () => {
+test('Only Admin decides all requested datasets, with canonical row validation and immediate download', () => {
   const s=seedStore(),actor=s.users.find(u=>u.role==='ADM');
   for(const refs of [undefined,[],[{id:'UNRELATED',version:999}]]){
     const submitted=scopeStore(s,actor),r=submitted.research.find(r=>r.id==='RSET-001');
-    r.decisions={ADM:{status:'Disetujui',note:'Persetujuan Admin lintas bidang',groups:[...r.requestedGroups],accessEnd:'2026-12-31',download:true,validatedRows:refs}};
+    r.decisions={ADM:{status:'Disetujui',note:'Persetujuan Admin lintas bidang',groups:[...r.requestedGroups],accessEnd:'2026-12-31',download:false,validatedRows:refs}};
     const saved=mergeStore(s,submitted,actor,'Keputusan Admin',r.id).research.find(x=>x.id===r.id);
-    assert.equal(saved.status,'Disetujui');assert.equal(saved.access,'Belum Aktif');
+    assert.equal(saved.status,'Disetujui');assert.equal(saved.access,'Aktif');assert.equal(saved.download,true);assert.ok(authorizedResearchEntries(s,saved,saved.owner).length);
     assert.deepEqual(saved.decisions.ADM.validatedRows,requestedResearchEntries(s,r).map(e=>({id:e.id,version:e.version})));
     assert.ok(researchDataValidated(s,saved));
   }
@@ -68,7 +68,7 @@ test('Admin approves the whole request or rejects it and revokes previous access
   const copy=scopeStore(s,actor),r=copy.research[0];
   r.decisions={ADM:{status,note:'Keputusan baru Admin',groups:status==='Disetujui'?[...r.requestedGroups]:[],accessEnd:'2026-12-31',download:true}};
   const saved=mergeStore(s,copy,actor,'Keputusan',r.id).research[0];
-  assert.equal(saved.status,status);assert.equal(saved.access,'Belum Aktif');
+  assert.equal(saved.status,status);assert.equal(saved.access,status==='Disetujui'?'Aktif':'Belum Aktif');
   assert.equal(saved.download,status==='Disetujui');
  }
  for(const [status,selected] of [['Disetujui',['kejadian']],['Perlu Perbaikan',[]],['Disetujui',['logistik']]]){
@@ -87,11 +87,11 @@ test('Admin coordinates deadlines while the request stays submitted',()=>{
   assert.throws(()=>mergeStore(s,copy,actor,'Status tidak sah',r.id));
  }
 });
-test('Administrator cannot activate access without complete current row validation', () => {
+test('Separate activation is retired; Admin must decide the request', () => {
   const s=seedStore(),actor=s.users.find(u=>u.role==='ADM');
   s.research[0].access='Belum Aktif';delete s.research[0].decisions.ADM.validatedRows;
   const submitted=scopeStore(s,actor);submitted.research.find(r=>r.id==='RSET-001').access='Aktif';
-  assert.throws(()=>mergeStore(s,submitted,actor,'Aktivasi','RSET-001'),/Validasi baris/);
+  assert.throws(()=>mergeStore(s,submitted,actor,'Aktivasi','RSET-001'),/Perubahan kolom access/);
 });
 test('Researcher can save their phone and reminder consent but cannot forge row approvals', () => {
   const s=seedStore();s.users.forEach(u=>u.demoPassword='');

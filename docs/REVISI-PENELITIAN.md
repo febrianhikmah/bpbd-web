@@ -1,5 +1,7 @@
 # Revisi penelitian
 
+> Alur persetujuan, hasil, dan arsip telah diperbarui pada 17 November 2026. Acuan terkini: [revisi penelitian poin 2?4](REVISI-PENELITIAN-2026-11-17.md). Uraian alur lama di bawah disimpan sebagai riwayat.
+
 Revisi mengikuti “Notulensi rencana perubahan bagian penelitian”, termasuk dua gambar rincian permohonan. Perubahan hanya menyangkut layanan penelitian dan pendukungnya.
 
 - Nomor telepon/WhatsApp wajib saat pendaftaran peneliti, dapat diubah lewat Profil Saya, dan terlihat pada daftar serta pemeriksaan akun peneliti. Akun lama tidak diberi nomor fiktif; lengkapi profilnya terlebih dahulu.

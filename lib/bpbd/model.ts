@@ -65,6 +65,7 @@ export function isReviewer(store: Store, role: Role) { void store; return role =
 export function canVisit(store: Store, role: Role, path: string, accountId?: string) {
   const p = path.split('?')[0];
   if (['/', '/masuk', '/daftar-peneliti', '/pemulihan-akun', '/profil', '/bantuan', '/403', '/404', '/gangguan'].includes(p)) return true;
+  if (p === '/library-penelitian') return sessionUser(store, accountId || null)?.status === 'Aktif';
   if (role === 'PEN') {
     const account = sessionUser(store, accountId || null);
     if (p === '/status-akun') return true;
