@@ -52,3 +52,16 @@ test('Existing full Admin approvals upgrade once without reviving revoked or sta
  r.access='Dicabut';assert.equal(upgradeResearchAccess(store).changed.length,0);
  r.access='Belum Aktif';delete r.decisions.ADM.validatedRows;assert.equal(upgradeResearchAccess(store).changed.length,0);
 });
+
+test('Legacy partial approvals can submit results without changing their old grants',()=>{
+ const store=seedStore(),r=store.research[0],actor=store.users.find(u=>u.id===r.owner);
+ r.status='Disetujui Sebagian';r.accessEnd='2026-01-01';
+ r.decisions={KL:{status:'Disetujui',note:'Persetujuan lama',groups:['kejadian'],download:true,accessEnd:r.accessEnd},PK:{status:'Ditolak',note:'Cakupan lama ditolak',groups:[]}};
+ const snapshot=scopeStore(store,actor),next=snapshot.research.find(x=>x.id===r.id);
+ next.versions.push({id:'VER-LEGACY',at:'',filename:'hasil.pdf',fileId:'FILE-LEGACY',summary:'Hasil penelitian',feedback:'Rekomendasi',review:'Sudah',note:''});next.complete=true;
+ const saved=mergeStore(store,snapshot,actor,'Kirim hasil',r.id).research.find(x=>x.id===r.id);
+ assert.equal(saved.versions.length,1);assert.equal(saved.complete,true);assert.equal(saved.status,r.status);
+ assert.deepEqual(saved.decisions,r.decisions);assert.equal(saved.accessEnd,r.accessEnd);assert.equal(saved.access,r.access);assert.equal(saved.download,r.download);
+ next.status='Disetujui';assert.throws(()=>mergeStore(store,snapshot,actor,'Status palsu',r.id));
+ next.status='Disetujui Sebagian';next.decisions.KL.groups.push('mitigasi');assert.throws(()=>mergeStore(store,snapshot,actor,'Cakupan palsu',r.id));
+});

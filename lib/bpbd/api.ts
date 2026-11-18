@@ -7,8 +7,8 @@ export class RequestError extends Error {
 export async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`/api/bpbd/${path}`, {
     method, credentials: 'same-origin', cache: 'no-store',
-    headers: { 'Content-Type': 'application/json', 'X-BPBD-Request': '1' },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    headers: { ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), 'X-BPBD-Request': '1' },
+    ...(body !== undefined ? { body: body instanceof FormData ? body : JSON.stringify(body) } : {}),
   });
   const result = await response.json() as { error?: string };
   if (!response.ok) throw new RequestError(response.status, result.error || 'Permintaan gagal. Coba kembali.');

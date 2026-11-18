@@ -9,7 +9,7 @@ import pg from 'pg';
 import { request as playwrightRequest } from '@playwright/test';
 
 const database = `bpbd_test_${randomBytes(6).toString('hex')}`;
-const environment = { ...process.env, PGDATABASE: database, BPBD_INTEGRATION_TEST: '1', NEXT_TELEMETRY_DISABLED: '1' };
+const environment = { ...process.env, PGDATABASE: database, BPBD_INTEGRATION_TEST: '1', BPBD_RESEARCH_STATEMENT_ENABLED: 'true', NEXT_TELEMETRY_DISABLED: '1' };
 let server, adminPool, testPool, baseURL, created = false;
 let output = '';
 const contexts = [];
@@ -93,7 +93,7 @@ test('Uploaded documents persist in PostgreSQL and downloads enforce field acces
 });
 test('Registration uses server identity and pending accounts cannot create operational data', async () => {
   const ctx=await context();
-  const registration=await ctx.post('/api/bpbd/register',{data:{phone:'081234567890',name:'Peneliti Integrasi',email:'integration@contoh.test',institution:'Kampus Uji',password:'PenelitiUji123!',consent:true}});
+  const registration=await ctx.post('/api/bpbd/register',{multipart:{phone:'081234567890',name:'Peneliti Integrasi',email:'integration@contoh.test',institution:'Kampus Uji',password:'PenelitiUji123!',consent:'true',statement:{name:'surat.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF')}}});
   assert.equal(registration.status(),201,await registration.text());
   const snapshot=await state(ctx);assert.equal(snapshot.store.users[0].status,'Menunggu Persetujuan');assert.equal(snapshot.store.entries.length,0);
   await save(ctx,snapshot,s=>{s.users[0].status='Aktif';},403);
@@ -174,6 +174,47 @@ test('Global library shares result versions with active accounts but keeps suppo
  const pending=await login('arif@peneliti.example');assert.equal((await pending.get('/api/bpbd/library')).status(),403);assert.equal((await pending.get(`/api/bpbd/library/${request.id}/ARCHIVE-V1/file`)).status(),403);
  const anon=await context();assert.equal((await anon.get(`/api/bpbd/library/${request.id}/ARCHIVE-V1/file`)).status(),401);
  const snapshot=await state(admin);await save(admin,snapshot,s=>{const r=s.research.find(r=>r.id===request.id);r.versions.at(-1).review='Perlu Perbaikan';r.versions.at(-1).note='Legacy review';},403);
+});
+
+test('Registration requires a private valid statement and stores account and letter together',async()=>{
+ const anon=await context(),data={phone:'081234567890',name:'Peneliti Surat Demo',email:'surat@contoh.test',institution:'Institusi Demo',password:'SuratDemo123!',consent:true};
+ const before=(await testPool.query('SELECT count(*)::int AS count FROM bpbd_users')).rows[0].count;
+ const template=await anon.get('/api/bpbd/registration-statement');assert.equal(template.status(),200);const document=await template.body();
+ assert.ok(document.subarray(0,2).equals(Buffer.from('PK')));assert.ok(document.toString().includes('PENYERAHAN HASIL PENELITIAN'));assert.ok(document.toString().includes('TEMPLATE DEMO'));
+ assert.equal((await anon.post('/api/bpbd/register',{data})).status(),400);
+ const multipart={...data,consent:'true'};
+ assert.equal((await anon.post('/api/bpbd/register',{multipart:{...multipart,statement:{name:'surat.pdf',mimeType:'application/pdf',buffer:Buffer.from('file palsu')}}})).status(),400);
+ const huge=Buffer.alloc(3*1024*1024+100000);Buffer.from('%PDF-').copy(huge);
+ assert.equal((await anon.post('/api/bpbd/register',{multipart:{...multipart,statement:{name:'besar.pdf',mimeType:'application/pdf',buffer:huge}}})).status(),413);
+ assert.equal((await testPool.query('SELECT count(*)::int AS count FROM bpbd_users')).rows[0].count,before);
+ const registered=await anon.post('/api/bpbd/register',{multipart:{...multipart,statement:{name:'surat-dilengkapi.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:document}}});
+ assert.equal(registered.status(),201,await registered.text());const snapshot=await registered.json(),id=snapshot.userId;
+ assert.equal(snapshot.store.users[0].statement.filename,'surat-dilengkapi.docx');
+ assert.deepEqual(await (await anon.get(`/api/bpbd/research-statement/${id}`)).body(),document);
+ const admin=await login('adm@bpbd.example'),field=await login('sek@bpbd.example'),other=await login('nadia@peneliti.example');
+ assert.equal((await admin.get(`/api/bpbd/research-statement/${id}`)).status(),200);
+ for(const outsider of [field,other])assert.equal((await outsider.get(`/api/bpbd/research-statement/${id}`)).status(),403);
+ const unsigned=await context();assert.equal((await unsigned.get(`/api/bpbd/research-statement/${id}`)).status(),401);
+ await save(admin,await state(admin),s=>{s.users.find(u=>u.id===id).statement.filename='tampered.pdf';},403);
+ await save(admin,await state(admin),s=>{const u=s.users.find(u=>u.id===id);u.status='Perlu Perbaikan';u.note='Lengkapi surat.';});
+ const pdf=Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF');
+ const replaced=await anon.put('/api/bpbd/research-statement',{headers:{'X-File-Name':'surat-perbaikan.pdf'},data:pdf});assert.equal(replaced.status(),200,await replaced.text());
+ assert.equal((await state(anon)).store.users[0].status,'Menunggu Persetujuan');
+ assert.deepEqual(await (await anon.get(`/api/bpbd/research-statement/${id}`)).body(),pdf);
+ const library=await (await admin.get('/api/bpbd/library')).json();assert.ok(!JSON.stringify(library).includes('surat-perbaikan.pdf'));
+});
+
+test('Disabling the demo feature permits registration without a letter',async()=>{
+ const probe=createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
+ const child=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...environment,BPBD_RESEARCH_STATEMENT_ENABLED:'false'},stdio:'ignore',windowsHide:true});
+ const ctx=await playwrightRequest.newContext({baseURL:`http://127.0.0.1:${port}`,extraHTTPHeaders:{'X-BPBD-Request':'1'}});
+ try{
+  let ready=false;for(let i=0;i<80;i++){try{if((await ctx.get('/api/bpbd/registration-options')).status()===200){ready=true;break;}}catch{}if(child.exitCode!==null)break;await delay(250);}
+  assert.ok(ready);assert.equal((await (await ctx.get('/api/bpbd/registration-options')).json()).statementEnabled,false);
+  assert.equal((await ctx.get('/api/bpbd/registration-statement')).status(),404);
+  const registered=await ctx.post('/api/bpbd/register',{data:{phone:'081234567890',name:'Demo Tanpa Surat',email:'tanpasurat@contoh.test',institution:'Demo',password:'TanpaSurat123!',consent:true}});
+  assert.equal(registered.status(),201,await registered.text());assert.equal((await registered.json()).store.users[0].statement,undefined);
+ }finally{await ctx.dispose();child.kill();await Promise.race([new Promise(resolve=>child.once('exit',resolve)),delay(5000)]);}
 });
 
 test('Browser workflows use PostgreSQL, including login, forms, import, reports and research', { timeout: 360000 }, async () => {

@@ -1,3 +1,5 @@
+import { Pool } from 'pg';
+import { readStore, writeStore } from '../../lib/server/repository';
 import {test,expect} from './fixtures';
 test('Result upload immediately appears in personal archives and the global library, including old versions',async({page})=>{
  const headers={'X-BPBD-Request':'1'};
@@ -22,4 +24,26 @@ test('Result upload immediately appears in personal archives and the global libr
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath('library-mobile.png'),fullPage:true});
  await login('arif@peneliti.example');expect((await page.request.get('/api/bpbd/library')).status()).toBe(403);
  await page.request.post('/api/bpbd/logout',{headers});expect((await page.request.get('/api/bpbd/library')).status()).toBe(401);
+});
+
+test('An old partial approval can upload results after data access expires',async({page})=>{
+ const pool=new Pool(),client=await pool.connect();
+ try{
+  await client.query('BEGIN');const {store}=await readStore(client,true),next=structuredClone(store),r=next.research.find(r=>r.id==='RSET-001')!;
+  r.status='Disetujui Sebagian';r.accessEnd='2026-01-01';
+  r.decisions={KL:{status:'Disetujui',note:'Persetujuan lama',groups:['kejadian'],download:true,accessEnd:r.accessEnd},PK:{status:'Ditolak',note:'Cakupan lama ditolak',groups:[]}};
+  await writeStore(client,store,next);await client.query('COMMIT');
+ }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();await pool.end();}
+ const headers={'X-BPBD-Request':'1'};
+ expect((await page.request.post('/api/bpbd/login',{headers,data:{email:'nadia@peneliti.example',password:'BPBDdemo2026!'}})).status()).toBe(200);
+ await page.goto('/peneliti/hasil/kirim/RSET-001');
+ await page.getByLabel('Dokumen hasil penelitian',{exact:true}).setInputFiles({name:'hasil-permohonan-lama.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF')});
+ await page.locator('#result-summary').fill('Hasil untuk permohonan versi sebelumnya.');await page.locator('#result-feedback').fill('Rekomendasi penelitian lama.');
+ await page.getByRole('button',{name:'Tinjau Hasil',exact:true}).click();
+ const saved=page.waitForResponse(r=>r.url().endsWith('/api/bpbd/state')&&r.request().method()==='PUT');
+ await page.getByRole('button',{name:'Kirim Hasil Penelitian',exact:true}).click();expect((await saved).status()).toBe(200);
+ await expect(page.locator('.badge').filter({hasText:/^Sudah$/})).toBeVisible();await page.reload();await expect(page.locator('.badge').filter({hasText:/^Sudah$/})).toBeVisible();
+ const request=(await (await page.request.get('/api/bpbd/state')).json()).store.research.find((r:{id:string})=>r.id==='RSET-001');
+ expect(request.status).toBe('Disetujui Sebagian');expect(request.decisions.KL.groups).toEqual(['kejadian']);expect(request.accessEnd).toBe('2026-01-01');
+ await page.goto('/library-penelitian');await page.getByRole('button',{name:'Buka arsip',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('hasil-permohonan-lama.pdf');
 });

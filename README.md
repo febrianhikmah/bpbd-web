@@ -1,5 +1,7 @@
 # SIAGA — Sistem Data Kebencanaan BPBD Kota Semarang
 
+**Data penelitian dummy terbaru:** 6 permohonan sesuai alur saat ini, termasuk 2 arsip penelitian dengan 3 PDF. Lihat [skenario dummy dan cadangan](docs/DUMMY-PENELITIAN.md).
+
 **Revisi terbaru 17 November 2026:** persetujuan penelitian langsung membuka unduhan, status hasil otomatis Sudah/Belum, dan Library Penelitian untuk seluruh akun aktif. Lihat [catatan revisi penelitian](docs/REVISI-PENELITIAN-2026-11-17.md).
 
 **Revisi logistik 11 November 2026:** menu logistik disatukan ke Dashboard Logistik, dengan tampilan dan alur transaksi Kelompok 1. Lihat [catatan revisi dan rekonsiliasi data](docs/REVISI-KELOMPOK1.md).

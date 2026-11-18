@@ -9,6 +9,7 @@ import { ApiError, mergeStore, requireThat, scopeStore } from './policy.ts';
 import { readStore, writeStore } from './repository.ts';
 import { tokenHash, verifyPassword } from './passwords.ts';
 import { researchLibrary } from '../bpbd/research-library.ts';
+import { statementEnabled, statementLimitMb, statementTemplate, checkStatement } from './research-statement.ts';
 
 const cookieName = 'bpbd_session';
 const sessionSeconds = 8 * 60 * 60;
@@ -79,7 +80,15 @@ export async function handleApi(request: Request) {
     const snapshot = await readStore(client, request.method !== 'GET');
     const { store } = snapshot;
     let result: Response;
-    if (path === 'login' && request.method === 'POST') {
+    if (path === 'registration-options' && request.method === 'GET') {
+      result = response({ statementEnabled: statementEnabled(), maxUploadMb: statementLimitMb(store.settings.maxUploadMb) });
+    } else if (path === 'registration-statement' && request.method === 'GET') {
+      requireThat(statementEnabled(), 'Template Surat Pernyataan sedang tidak digunakan.', 404);
+      result = new Response(new Uint8Array(statementTemplate()), { headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': 'attachment; filename="Surat-Pernyataan-Peneliti-DEMO.docx"', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff',
+      } });
+    } else if (path === 'login' && request.method === 'POST') {
       const input = z.object({ email: z.string().email().max(254), password: z.string().min(1).max(256) }).strict().parse(await json(request));
       const email = input.email.trim().toLowerCase();
       const previous = attempts.get(email);
@@ -96,12 +105,32 @@ export async function handleApi(request: Request) {
       const token = await newSession(client, user);
       result = response({ store: scopeStore(store, user), revision: snapshot.revision, userId: user.id }, 200, { 'Set-Cookie': cookie(request, token) });
     } else if (path === 'register' && request.method === 'POST') {
-      const input = z.object({ phone: z.string().max(40).refine(v => !!normalizePhone(v), 'Nomor WhatsApp tidak valid.'), name: z.string().trim().min(1).max(200), email: z.string().email().max(254), institution: z.string().trim().min(1).max(300), password: z.string().min(8).max(256), consent: z.literal(true) }).strict().parse(await json(request));
+      const registrationSchema = z.object({ phone: z.string().max(40).refine(v => !!normalizePhone(v), 'Nomor WhatsApp tidak valid.'), name: z.string().trim().min(1).max(200), email: z.string().email().max(254), institution: z.string().trim().min(1).max(300), password: z.string().min(8).max(256), consent: z.literal(true) }).strict();
+      const limit = statementLimitMb(store.settings.maxUploadMb);
+      let raw: unknown, statement: File | undefined;
+      if (request.headers.get('content-type')?.startsWith('multipart/form-data')) {
+        const body = await bytes(request, limit * 1024 * 1024 + 65536);
+        let form: FormData;
+        try { form = await new Response(new Uint8Array(body), { headers: { 'Content-Type': request.headers.get('content-type')! } }).formData(); }
+        catch { throw new ApiError(400,'Formulir pendaftaran tidak valid.'); }
+        const fields: Record<string,unknown> = {};
+        for (const key of new Set(form.keys())) {
+          requireThat(form.getAll(key).length === 1,'Kolom pendaftaran duplikat.',400);
+          if (key === 'statement') { const value=form.get(key);requireThat(value instanceof File,'Unggah dokumen Surat Pernyataan.',400);statement=value; }
+          else fields[key] = key === 'consent' ? form.get(key) === 'true' : form.get(key);
+        }
+        raw = fields;
+      } else raw = await json(request);
+      const input = registrationSchema.parse(raw);
+      requireThat(!statementEnabled() || statement,'Unggah Surat Pernyataan yang sudah dilengkapi terlebih dahulu.',400);
+      const statementMime = statement ? await checkStatement(statement,limit) : undefined;
       requireThat(!store.users.some(u => u.email.toLowerCase() === input.email.toLowerCase()), 'Email sudah digunakan.', 409);
       const user: User = { whatsappConsent: true, phone: normalizePhone(input.phone), id: uid('PEN'), name: input.name, email: input.email.trim().toLowerCase(), institution: input.institution, note: '', role: 'PEN', status: 'Menunggu Persetujuan', demoPassword: input.password };
+      if (statement) user.statement = {fileId:uid('FILE'),filename:statement.name,uploadedAt:timestamp()};
       const next = structuredClone(store); next.users.push(user);
       next.audit.unshift({ id: uid('AUD'), at: timestamp(), actor: user.name, role: 'PEN', action: 'Pendaftaran peneliti diajukan', object: user.id });
       await writeStore(client, store, next);
+      if (statement) await client.query('INSERT INTO bpbd_files(id,owner_id,name,mime,content) VALUES($1,$2,$3,$4,$5)',[user.statement!.fileId,user.id,statement.name,statementMime,Buffer.from(await statement.arrayBuffer())]);
       const token = await newSession(client, user);
       result = response({ store: scopeStore(next, user), revision: snapshot.revision + 1, userId: user.id }, 201, { 'Set-Cookie': cookie(request, token) });
     } else if (path === 'logout' && request.method === 'POST') {
@@ -111,6 +140,25 @@ export async function handleApi(request: Request) {
       const user = await account(client, request, store);
       if (path === 'state' && request.method === 'GET') {
         result = response({ store: scopeStore(store, user), revision: snapshot.revision, userId: user.id });
+      } else if (/^research-statement\/[\w-]+$/.test(path) && request.method === 'GET') {
+        const target = store.users.find(u => u.id === path.split('/')[1]);
+        requireThat(target && (target.id === user.id || user.role === 'ADM' && user.status === 'Aktif'));
+        requireThat(target.statement,'Surat Pernyataan belum diunggah.',404);
+        const file = (await client.query('SELECT name,mime,content FROM bpbd_files WHERE id=$1 AND owner_id=$2',[target.statement.fileId,target.id])).rows[0];
+        requireThat(file,'Dokumen Surat Pernyataan tidak ditemukan.',404);
+        result = new Response(new Uint8Array(file.content),{headers:{'Content-Type':file.mime,'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+      } else if (path === 'research-statement' && request.method === 'PUT') {
+        requireThat(user.role === 'PEN' && ['Menunggu Persetujuan','Perlu Perbaikan','Ditolak'].includes(user.status),'Surat hanya dapat diperbarui selama pendaftaran masih diperiksa.');
+        const name = decodeURIComponent(request.headers.get('x-file-name') || '');
+        const content = await bytes(request, statementLimitMb(store.settings.maxUploadMb) * 1024 * 1024);
+        const file = new File([content],name), mime = await checkStatement(file,statementLimitMb(store.settings.maxUploadMb));
+        const next = structuredClone(store), target = next.users.find(u => u.id === user.id)!;
+        target.statement = {fileId:uid('FILE'),filename:name,uploadedAt:timestamp()};
+        target.status = 'Menunggu Persetujuan';target.note = '';
+        next.audit.unshift({id:uid('AUD'),at:timestamp(),actor:user.name,role:'PEN',action:'Surat Pernyataan pendaftaran diperbarui',object:user.id});
+        await writeStore(client,store,next);
+        await client.query('INSERT INTO bpbd_files(id,owner_id,name,mime,content) VALUES($1,$2,$3,$4,$5)',[target.statement.fileId,user.id,name,mime,content]);
+        result = response({store:scopeStore(next,target),revision:snapshot.revision+1,userId:user.id});
       } else if (path === 'library' && request.method === 'GET') {
         requireThat(user.status === 'Aktif', 'Library hanya tersedia untuk akun aktif.');
         const ids = store.research.flatMap(r => r.versions.map(v => v.fileId));

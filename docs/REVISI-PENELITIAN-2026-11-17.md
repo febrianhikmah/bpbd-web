@@ -1,6 +1,6 @@
 # Revisi penelitian — 17 November 2026
 
-Acuan: **Perbaikan bagian penelitian.docx**, poin 2–4, dengan penjelasan pengguna: status hasil otomatis **Sudah** setelah unggahan berhasil; Library dapat dibaca dan diunduh oleh semua akun aktif yang login. Poin 1 (surat pernyataan saat pendaftaran) belum termasuk pengerjaan ini.
+Acuan: **Perbaikan bagian penelitian.docx**, poin 2–4, dengan penjelasan pengguna: status hasil otomatis **Sudah** setelah unggahan berhasil; Library dapat dibaca dan diunduh oleh semua akun aktif yang login. Poin 1 kemudian ditambahkan sebagai demo terpisah; lihat [Surat Pernyataan demo](SURAT-PERNYATAAN-DEMO.md).
 
 ## Persetujuan sekali oleh Admin
 
@@ -38,3 +38,9 @@ Catatan ini menggantikan uraian aktivasi terpisah, status review bertingkat, dan
 ## Hasil pemeriksaan
 
 Build berhasil; 32 tes unit serta 8 tes PostgreSQL (termasuk 13 skenario browser) lulus. Pengujian mencakup persetujuan langsung diikuti unduhan, status otomatis, riwayat dua versi hasil, akses Library semua role aktif, penolakan akun menunggu/anonim, perlindungan surat pendukung dan permohonan pribadi, serta tampilan ponsel. Pengujian memakai database sementara; database pengguna tidak diisi data tes.
+
+## Perbaikan kompatibilitas pengiriman hasil
+
+Pengiriman hasil dari permohonan lama berstatus Disetujui Sebagian sebelumnya ditolak oleh enum status baru dan muncul sebagai pesan Isian permintaan tidak valid. Validasi kini menerima status historis hanya jika status tersebut sudah tersimpan dan tidak diubah. Permohonan baru tetap mengikuti tiga status terbaru. Cakupan keputusan, izin unduh, masa akses, dan ID lama tetap dipertahankan.
+
+Tes regresi menguji pengiriman hasil setelah akses data kedaluwarsa, penyimpanan status Sudah dan arsip Library, serta penolakan perubahan status/cakupan yang dipalsukan. Pemeriksaan data pengguna hanya membaca dan memvalidasi salinan, tanpa menyimpan hasil uji ke database pengguna.

@@ -13,7 +13,7 @@ const str = z.string().max(20000);
 const id = z.string().min(1).max(120).regex(/^[\w-]+$/);
 const event = z.object({ at: str, actor: str, action: str, note: str.optional() }).strict();
 const role = z.enum(['ADM', 'PK', 'KL', 'RR', 'SEK', 'PEN']);
-const userSchema = z.object({ whatsappConsent: z.boolean().optional(), phone: z.string().max(40).refine(v => !v || !!normalizePhone(v), 'Nomor telepon tidak valid.').optional(), id, name: str.min(1), email: z.string().email().max(254), role, institution: str, status: z.enum(['Aktif', 'Nonaktif', 'Menunggu Persetujuan', 'Perlu Perbaikan', 'Ditolak']), note: str, demoPassword: z.string().max(256) }).strict();
+const userSchema = z.object({ statement: z.object({ fileId: id, filename: str, uploadedAt: str }).strict().optional(), whatsappConsent: z.boolean().optional(), phone: z.string().max(40).refine(v => !v || !!normalizePhone(v), 'Nomor telepon tidak valid.').optional(), id, name: str.min(1), email: z.string().email().max(254), role, institution: str, status: z.enum(['Aktif', 'Nonaktif', 'Menunggu Persetujuan', 'Perlu Perbaikan', 'Ditolak']), note: str, demoPassword: z.string().max(256) }).strict();
 const resultSchema = z.object({ id, at: str, filename: str, fileId: id, summary: str, feedback: str, review: str, note: str }).strict();
 const decisionSchema = z.object({ status: z.enum(['Disetujui', 'Ditolak']), note: str, groups: z.array(str), download: z.boolean().optional(), accessEnd: str.optional(), validatedRows: z.array(z.object({ id, version: z.number().int().positive() }).strict()).optional() }).strict();
 const researchSchema = z.object({ validation: z.object({ at: str, rows: z.array(z.object({ id, version: z.number().int().positive() }).strict()) }).strict().optional(), id, owner: id, title: str.min(1), institution: str, purpose: str, requestedGroups: z.array(str).min(1), area: str, start: str, end: str, deadline: str, status: z.enum(researchStatuses), access: str, accessEnd: str, download: z.boolean(), decisions: z.record(decisionSchema), history: z.array(event), versions: z.array(resultSchema), extension: z.object({ date: str, reason: str }).strict().optional(), supportingId: id.optional(), supportingName: str.optional(), complete: z.boolean().optional() }).strict();
@@ -29,6 +29,7 @@ export function scopeStore(store: Store, actor: User): Store {
       if (owner && !scoped.users.some(u => u.id === owner.id)) scoped.users.push({ ...owner, email: '', note: '', demoPassword: '' });
     }
   }
+  for (const user of scoped.users) if (actor.role !== 'ADM' && user.id !== actor.id) delete user.statement;
   if (actor.role === 'PEN') {
     const allowed = new Set(scoped.research.flatMap(r => authorizedResearchEntries(store, r, actor.id)).map(e => e.id));
     scoped.entries = store.entries.filter(e => allowed.has(e.id)).map(e => ({ ...e, history: [], description: '', fileId: undefined, fileName: undefined, linkedId: undefined }));
@@ -48,7 +49,13 @@ function history(before: Entry['history'], after: Entry['history'], actor: User)
   return [...before, ...after.slice(before.length).map(e => ({ ...e, at: timestamp(), actor: actor.name }))];
 }
 function validateResearch(store: Store, actor: User, old: Research | undefined, next: Research) {
-  researchSchema.parse(next);
+  // Historical statuses may remain on existing requests. Accept them only
+  // unchanged; submissions and new Admin decisions still use current statuses.
+  const legacyStatuses = ['Draf', 'Dalam Peninjauan', 'Perlu Perbaikan', 'Disetujui Sebagian'];
+  const schema = old && old.status === next.status && legacyStatuses.includes(old.status)
+    ? researchSchema.extend({ status: z.literal(old.status) })
+    : researchSchema;
+  schema.parse(next);
   let automaticValidation = false;
   requireThat(new Set(next.requestedGroups).size === next.requestedGroups.length && next.requestedGroups.every(g => !!groups[g] && groups[g].role !== 'SEK'), 'Kelompok data tidak valid.', 400);
   requireThat(next.start <= next.end && next.title.trim() && next.purpose.trim(), 'Isi permohonan tidak valid.', 400);
@@ -126,6 +133,7 @@ export function mergeStore(store: Store, submitted: Store, actor: User, action: 
       if (name === 'users') {
         const user = row as User;
         userSchema.parse(user);
+        requireThat(equal((old as User | undefined)?.statement,user.statement), 'Gunakan unggah Surat Pernyataan untuk mengubah dokumen pendaftaran.');
         requireThat(actor.role === 'ADM' || user.id === actor.id && !!old);
         if (actor.role !== 'ADM') fields(old!, user, ['name', 'email', 'institution', ...(actor.role === 'PEN' ? ['phone', 'whatsappConsent'] : [])]);
         requireThat(!user.demoPassword || user.demoPassword.length >= 8, 'Kata sandi minimal 8 karakter.', 400);
