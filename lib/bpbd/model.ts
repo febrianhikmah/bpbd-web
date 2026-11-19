@@ -1,3 +1,4 @@
+import { catalogToday, type ResearchCatalogRequest } from './research-datasets.ts';
 export type Role = 'ADM' | 'PK' | 'KL' | 'RR' | 'SEK' | 'PEN';
 export const roles: Record<Role, { name: string; short: string; slug: string; person: string }> = {
   ADM: { name: 'Admin Sistem BPBD', short: 'Admin Sistem', slug: '', person: 'Admin Demo' },
@@ -31,7 +32,7 @@ export type Entry = { id: string; group: string; title: string; area: string; ha
 export type Event = { at: string; actor: string; action: string; note?: string };
 export type Audit = Event & { id: string; object: string; role: Role; before?: string; after?: string };
 export const researchStatuses = ['Diajukan', 'Disetujui', 'Ditolak'] as const;
-export type Research = { validation?: { at: string; rows: { id: string; version: number }[] }; id: string; owner: string; title: string; institution: string; purpose: string; requestedGroups: string[]; area: string; start: string; end: string; deadline: string; status: string; access: string; accessEnd: string; download: boolean; decisions: Record<string, { status: string; note: string; groups: string[]; download?: boolean; accessEnd?: string; validatedRows?: { id: string; version: number }[] }>; history: Event[]; versions: ResultVersion[]; extension?: { date: string; reason: string }; supportingId?: string; supportingName?: string; complete?: boolean };
+export type Research = { catalog?: ResearchCatalogRequest; validation?: { at: string; rows: { id: string; version: number }[] }; id: string; owner: string; title: string; institution: string; purpose: string; requestedGroups: string[]; area: string; start: string; end: string; deadline: string; status: string; access: string; accessEnd: string; download: boolean; decisions: Record<string, { status: string; note: string; groups: string[]; download?: boolean; accessEnd?: string; validatedRows?: { id: string; version: number }[] }>; history: Event[]; versions: ResultVersion[]; extension?: { date: string; reason: string }; supportingId?: string; supportingName?: string; complete?: boolean };
 export type ResultVersion = { id: string; at: string; filename: string; fileId: string; summary: string; feedback: string; review: string; note: string };
 export type User = { statement?: { fileId: string; filename: string; uploadedAt: string }; phone?: string; whatsappConsent?: boolean; id: string; name: string; email: string; role: Role; institution: string; status: string; note: string; demoPassword: string };
 export type Filters = { from: string; to: string; area: string; hazard: string; search: string; status: string };
@@ -103,11 +104,13 @@ export function normalizePhone(value: string) {
   }
   return /^[1-9]\d{9,14}$/.test(phone) ? phone : '';
 }
-export function approvedGroups(r: Research) { if (r.decisions.ADM) return r.decisions.ADM.status === 'Disetujui' ? [...new Set(r.decisions.ADM.groups.filter(g=>r.requestedGroups.includes(g)&&!!groups[g]))] : []; return [...new Set(Object.entries(r.decisions).filter(([,d]) => d.status === 'Disetujui').flatMap(([field,d]) => d.groups.filter(g => r.requestedGroups.includes(g) && groups[g]?.role === field)))]; }
+export function approvedGroups(r: Research) { if (r.catalog) { const grant = r.catalog.grant; const decision = r.decisions.ADM; if (r.status !== 'Disetujui' || decision?.status !== 'Disetujui' || !grant || grant.datasets.length !== r.requestedGroups.length || decision.groups.length !== r.requestedGroups.length) return []; return r.requestedGroups.every(id => decision.groups.includes(id) && grant.datasets.some(dataset => dataset.id === id)) ? [...r.requestedGroups] : []; } if (r.decisions.ADM) return r.decisions.ADM.status === 'Disetujui' ? [...new Set(r.decisions.ADM.groups.filter(g=>r.requestedGroups.includes(g)&&!!groups[g]))] : []; return [...new Set(Object.entries(r.decisions).filter(([,d]) => d.status === 'Disetujui').flatMap(([field,d]) => d.groups.filter(g => r.requestedGroups.includes(g) && groups[g]?.role === field)))]; }
 export function requestedResearchEntries(store: Store, r: Research, selected = r.requestedGroups) {
+  if (r.catalog) return [];
   return store.entries.filter(e => !e.archived && e.status === 'Disetujui' && selected.includes(e.group) && r.requestedGroups.includes(e.group) && (r.area === 'all' || r.area === e.area) && e.date >= r.start && e.date <= r.end);
 }
 export function researchDataValidated(store: Store, r: Research) {
+  if (r.catalog) return false; // Catalog versions are checked against PostgreSQL by the catalog access API.
   if (r.status !== 'Disetujui') return false;
   if (r.decisions.ADM) return approvedGroups(r).length === r.requestedGroups.length && r.requestedGroups.length > 0 && Array.isArray(r.decisions.ADM.validatedRows) && requestedResearchEntries(store,r,approvedGroups(r)).every(e=>r.decisions.ADM.validatedRows!.some(v=>v.id===e.id&&v.version===e.version));
   const fields = [...new Set(r.requestedGroups.map(g => groups[g]?.role))];
@@ -115,7 +118,7 @@ export function researchDataValidated(store: Store, r: Research) {
     approvedGroups(r).every(g => Array.isArray(r.decisions[groups[g].role]?.validatedRows)) &&
     requestedResearchEntries(store, r, approvedGroups(r)).every(e => r.decisions[groups[e.group].role]?.validatedRows?.some(v => v.id === e.id && v.version === e.version));
 }
-export function accessActive(r: Research) { return r.access === 'Aktif' && r.accessEnd >= referenceDate; }
+export function accessActive(r: Research) { return r.access === 'Aktif' && r.accessEnd >= (r.catalog ? catalogToday() : referenceDate); }
 export function authorizedResearchEntries(store: Store, request: Research, owner: string) {
   if (request.owner !== owner || sessionUser(store, owner)?.status !== 'Aktif' || !accessActive(request) || !researchDataValidated(store, request)) return [];
   return requestedResearchEntries(store, request, approvedGroups(request));

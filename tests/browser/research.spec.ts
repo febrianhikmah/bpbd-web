@@ -14,7 +14,23 @@ async function login(page: Page, email: string) {
   await expect(page.getByRole('button',{name:'Menu akun',exact:true})).toBeVisible();
 }
 
-test('research navigation, examples and simplified details match the revision',async({page})=>{
+async function expectCatalogControlsInOneRow(page: Page) {
+  const toolbar=page.locator('.research-catalog-toolbar');
+  await expect(toolbar).toBeVisible();
+  const controls=toolbar.locator('label, [role="combobox"], .research-catalog-count > span');
+  await expect(controls).toHaveCount(5);
+  await expect.poll(async()=>controls.evaluateAll(elements=>{
+    const centers=elements.map(element=>{const rect=element.getBoundingClientRect();return rect.y+rect.height/2;});
+    return Math.max(...centers)-Math.min(...centers);
+  })).toBeLessThan(2);
+  const headers=page.getByRole('table').getByRole('columnheader');
+  const boxes=await headers.evaluateAll(elements=>elements.map(element=>{const rect=element.getBoundingClientRect();return {x:rect.x,width:rect.width};}));
+  expect(boxes[1].x).toBeGreaterThan(boxes[0].x+boxes[0].width-1);
+  expect(boxes[2].x).toBeGreaterThan(boxes[1].x+boxes[1].width-1);
+  expect(boxes[0].width).toBeGreaterThanOrEqual(48);
+}
+
+test('research navigation, annual field catalog and simplified details match the revision',async({page})=>{
   await login(page,'nadia@peneliti.example');
   await expect(page.getByRole('heading',{name:'Beranda Peneliti',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Ajukan Permohonan',exact:true})).toHaveCount(0);
@@ -22,36 +38,70 @@ test('research navigation, examples and simplified details match the revision',a
   await page.goto('/peneliti/hasil');
   await expect(page.getByRole('heading',{name:'Tindak lanjut',exact:true})).toBeVisible();
   await expect(page.getByRole('link',{name:'Permohonan Data',exact:true})).toBeVisible();
-  await page.getByRole('link',{name:'Data',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Data',exact:true})).toBeVisible();
-  const catalog=page.getByRole('navigation',{name:'Kategori dan dataset penelitian'});
-  await expect(catalog.locator('button[aria-expanded]')).toHaveCount(13);
-  const preview=page.getByRole('region',{name:'Banjir permukiman (contoh 1)',exact:true});
-  await expect(preview.getByRole('table')).toHaveCount(1);
-  await expect(preview.locator('tbody tr')).toHaveCount(5);
-  await expect(preview.getByText('Menampilkan 5 dari 16 baris contoh yang tersedia.')).toBeVisible();
-  await expect(preview.getByRole('columnheader',{name:'Keluarga terdampak (KK)'})).toBeVisible();
-  await expect(preview.getByRole('rowheader',{name:'Semarang Utara'})).toBeVisible();
-  await expect(preview.getByRole('columnheader',{name:'Tanggal data',exact:true})).toBeVisible();
-  await expect(preview.getByText('1 Januari 2026',{exact:true})).toBeVisible();
-  await expect(preview.getByRole('columnheader',{name:'Tahun',exact:true})).toHaveCount(0);
-  const category=catalog.getByRole('button',{name:'Kejadian Bencana',exact:true});
-  await category.click();
-  await expect(category).toHaveAttribute('aria-expanded','false');
-  await expect(catalog.getByRole('button',{name:'Banjir permukiman (contoh 1)',exact:true})).toBeHidden();
-  await category.press('Enter');
-  await expect(category).toHaveAttribute('aria-expanded','true');
-  await catalog.getByRole('button',{name:'Longsor talud (contoh 2)',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Longsor talud (contoh 2)',exact:true})).toBeVisible();
-  await catalog.getByRole('button',{name:'Mitigasi Bencana',exact:true}).click();
-  await catalog.getByRole('button',{name:'Pembersihan saluran lingkungan (contoh 1)',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Pembersihan saluran lingkungan (contoh 1)',exact:true})).toBeVisible();
-  await expect(page.getByRole('columnheader',{name:'Jumlah kegiatan (kegiatan)'})).toBeVisible();
-  await expect(page.locator('table')).toHaveCount(1);
-  await expect(page.locator('tbody tr')).toHaveCount(5);
+  const dataMenu=page.getByRole('button',{name:'Data',exact:true});
+  const fields=[
+    {name:'Bidang Pencegahan dan Kesiapsiagaan',slug:'pencegahan',count:8},
+    {name:'Bidang Kedaruratan dan Logistik',slug:'kedaruratan',count:10},
+    {name:'Bidang Rehabilitasi dan Rekonstruksi',slug:'rehabilitasi',count:10},
+  ];
+  await expect(dataMenu).toHaveAttribute('aria-expanded','false');
+  await expect(page.getByRole('link',{name:fields[0].name,exact:true})).toBeHidden();
+  await dataMenu.click();
+  await expect(dataMenu).toHaveAttribute('aria-expanded','true');
+  for(const field of fields){
+    const link=page.getByRole('link',{name:field.name,exact:true});
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`/peneliti/show-data/${field.slug}$`));
+    await expect(link).toHaveAttribute('aria-current','page');
+    await expect(page.getByRole('heading',{name:field.name,exact:true})).toBeVisible();
+    const table=page.getByRole('table',{name:`Tabel penelitian ${field.name}`,exact:true});
+    await expect(table.getByRole('columnheader')).toHaveText(['No.','Tabel menurut Subjek','Terakhir Diperbarui']);
+    await expectCatalogControlsInOneRow(page);
+    await expect(table.locator('tbody tr')).toHaveCount(field.count);
+    await expect(table.getByRole('link')).toHaveCount(field.count);
+    await expect(page.getByRole('heading',{name:'Referensi bersama',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('link',{name:/REF\.1 Wilayah|REF\.2 Jenis Bencana/})).toHaveCount(0);
+    const firstRow=await table.locator('tbody tr').first().boundingBox();
+    expect(firstRow?.height).toBeGreaterThanOrEqual(48);
+    await expect(page.getByRole('combobox',{name:'Jumlah tabel per halaman',exact:true})).toHaveText('20');
+    const year=page.getByRole('combobox',{name:'Tahun',exact:true});
+    await expect(year).toHaveText('Semua tahun');
+    await year.click();
+    await expect(page.getByRole('option')).toHaveText(['Semua tahun','2025','2026']);
+    await page.getByRole('option',{name:'2025',exact:true}).click();
+    await expect(table.locator('tbody tr')).toHaveCount(field.count/2);
+    await expect(table.getByRole('link')).toHaveText(Array(field.count/2).fill(/2025$/));
+    await year.click();
+    await page.getByRole('option',{name:'2026',exact:true}).click();
+    await expect(table.locator('tbody tr')).toHaveCount(field.count/2);
+    await expect(table.getByRole('link')).toHaveText(Array(field.count/2).fill(/2026$/));
+  }
+  await dataMenu.click();
+  await expect(dataMenu).toHaveAttribute('aria-expanded','false');
+  await expect(page.getByRole('link',{name:fields[0].name,exact:true})).toBeHidden();
+  await dataMenu.press('Enter');
+  await expect(dataMenu).toHaveAttribute('aria-expanded','true');
+  await page.reload();
+  await expect(dataMenu).toHaveAttribute('aria-expanded','true');
+  await expect(page.getByRole('link',{name:fields[2].name,exact:true})).toHaveAttribute('aria-current','page');
   await page.screenshot({path:test.info().outputPath('show-data-desktop.png'),fullPage:true});
   await page.setViewportSize({width:390,height:844});
-  await expect(page.getByRole('heading',{name:'Pembersihan saluran lingkungan (contoh 1)',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Buka atau tutup navigasi',exact:true}).click();
+  await expect(dataMenu).toHaveAttribute('aria-expanded','true');
+  await page.screenshot({path:test.info().outputPath('show-data-mobile-menu.png'),fullPage:true,animations:'disabled'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.getByRole('link',{name:fields[0].name,exact:true}).click();
+  await expect(page.getByRole('heading',{name:fields[0].name,exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Tutup navigasi',exact:true})).toBeHidden();
+  await page.getByRole('combobox',{name:'Tahun',exact:true}).click();
+  await page.getByRole('option',{name:'2026',exact:true}).click();
+  await expect(page.getByRole('table').locator('tbody tr')).toHaveCount(4);
+  const pageSize=page.getByRole('combobox',{name:'Jumlah tabel per halaman',exact:true});
+  await pageSize.click();
+  await page.getByRole('option',{name:'50',exact:true}).click();
+  await expect(pageSize).toHaveText('50');
+  await expectCatalogControlsInOneRow(page);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.screenshot({path:test.info().outputPath('show-data-mobile.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1050});
@@ -61,27 +111,138 @@ test('research navigation, examples and simplified details match the revision',a
   await expect(page.getByRole('heading',{name:'Jadwal & akses'})).toBeVisible();
 });
 
-test('sending a research request automatically validates every matching row without manual checkboxes',async({page})=>{
+test('matrix picker keeps filtered selections, supports field bulk controls and a sticky mobile summary',async({page})=>{
   await login(page,'nadia@peneliti.example');
   await page.goto('/peneliti/permohonan/baru');
-  await page.locator('#research-title').fill('Permohonan validasi otomatis');
-  await page.locator('#research-purpose').fill('Menguji validasi otomatis seluruh data sesuai cakupan.');
-  await page.locator('label').filter({hasText:'Kejadian Bencana'}).getByRole('checkbox').check();
-  await page.getByRole('checkbox').last().check();
-  await page.getByRole('button',{name:'Tinjau Permohonan',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Simpan Draf',exact:true})).toHaveCount(0);
+  const pk='Bidang Pencegahan dan Kesiapsiagaan',kl='Bidang Kedaruratan dan Logistik',rr='Bidang Rehabilitasi dan Rekonstruksi';
+  const pkCard=page.getByRole('region',{name:pk,exact:true});
+  const year=page.getByRole('group',{name:'Tahun dataset',exact:true});
+  const summary=page.getByRole('region',{name:'Ringkasan pilihan dataset',exact:true});
+  await expect(pkCard.getByRole('button',{name:pk,exact:true})).toHaveAttribute('aria-expanded','true');
+  await expect(page.getByRole('button',{name:kl,exact:true})).toHaveAttribute('aria-expanded','false');
+  await expect(page.getByRole('button',{name:rr,exact:true})).toHaveAttribute('aria-expanded','false');
+  await expect(pkCard.getByRole('table').locator('tbody tr')).toHaveCount(4);
+  await expect(pkCard.getByRole('columnheader')).toHaveText(['Nama dataset','2026','2025']);
+  await expect(pkCard.getByRole('rowheader')).not.toContainText([/2026|2025/]);
+  const allPk=pkCard.getByRole('checkbox',{name:`Pilih semua ${pk}`,exact:true});
+  await allPk.check();
+  await expect(summary.getByText('8 dataset dipilih',{exact:true})).toBeVisible();
+  await year.getByRole('button',{name:'2026',exact:true}).click();
+  await expect(pkCard.getByRole('columnheader')).toHaveText(['Nama dataset','2026']);
+  await allPk.uncheck();
+  await expect(summary.getByText('4 dataset dipilih',{exact:true})).toBeVisible();
+  await expect(page.getByText('4 pilihan di luar filter tetap tersimpan',{exact:true})).toBeVisible();
+  await year.getByRole('button',{name:'Semua',exact:true}).click();
+  await expect(allPk).toHaveAttribute('aria-checked','mixed');
+  await allPk.check();await allPk.uncheck();
+  await expect(summary.getByText('0 dataset dipilih',{exact:true})).toBeVisible();
+  const irbi=pkCard.getByRole('rowheader').filter({hasText:'Indeks Risiko Bencana (IRBI)'});
+  await irbi.getByRole('button').click();
+  await expect(summary.getByText('2 dataset dipilih',{exact:true})).toBeVisible();
+  await pkCard.getByRole('checkbox',{name:'Indeks Risiko Bencana (IRBI) — 2025',exact:true}).uncheck();
+  await expect(summary.getByText('1 dataset dipilih',{exact:true})).toBeVisible();
+  await page.getByRole('searchbox',{name:'Cari dataset',exact:true}).fill('kejadian');
+  await expect(page.getByRole('button',{name:pk,exact:true})).toHaveCount(0);
+  const klCard=page.getByRole('region',{name:kl,exact:true});
+  await expect(klCard.getByRole('button',{name:kl,exact:true})).toHaveAttribute('aria-expanded','true');
+  await expect(klCard.getByRole('table').locator('tbody tr')).toHaveCount(1);
+  await klCard.getByRole('checkbox',{name:`Pilih semua ${kl}`,exact:true}).check();
+  await expect(summary.getByText('3 dataset dipilih',{exact:true})).toBeVisible();
+  await page.getByRole('searchbox',{name:'Cari dataset',exact:true}).fill('tidak-ada-dataset-ini');
+  await expect(page.getByText('Dataset tidak ditemukan',{exact:true})).toBeVisible();
+  await expect(summary.getByText('3 dataset dipilih',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Hapus filter',exact:true}).click();
+  await expect(pkCard.getByRole('button',{name:pk,exact:true})).toHaveAttribute('aria-expanded','true');
+  await expect(klCard.getByRole('button',{name:kl,exact:true})).toHaveAttribute('aria-expanded','true');
+  await expect(page.getByRole('button',{name:rr,exact:true})).toHaveAttribute('aria-expanded','false');
+  await page.locator('.research-request-datasets').screenshot({path:test.info().outputPath('dataset-picker-desktop.png'),animations:'disabled'});
+  await page.setViewportSize({width:390,height:844});
+  await page.locator('.research-picker-tools').scrollIntoViewIfNeeded();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  const bounds=await summary.boundingBox();
+  expect(bounds!.y+bounds!.height).toBeLessThanOrEqual(844);
+  expect(bounds!.y+bounds!.height).toBeGreaterThan(800);
+  const longRow=pkCard.getByRole('table').locator('tbody tr').nth(1);
+  const target=longRow.locator('.research-picker-choice').first();
+  const rowBounds=await longRow.boundingBox(),targetBounds=await target.boundingBox();
+  expect(targetBounds!.height).toBeGreaterThanOrEqual(44);expect(targetBounds!.width).toBeGreaterThanOrEqual(80);
+  expect(targetBounds!.height).toBeGreaterThanOrEqual(rowBounds!.height-2);
+  await page.screenshot({path:test.info().outputPath('dataset-picker-mobile-viewport.png'),animations:'disabled'});
+  await page.locator('.research-request-datasets').screenshot({path:test.info().outputPath('dataset-picker-mobile.png'),animations:'disabled'});
+  await pkCard.getByRole('button',{name:pk,exact:true}).click();
+  await expect(pkCard.getByRole('button',{name:pk,exact:true})).toHaveAttribute('aria-expanded','false');
+  await expect(summary.getByText('3 dataset dipilih',{exact:true})).toBeVisible();
+});
+
+test('annual request selection follows dataset years through Admin approval, CSV and results',async({page})=>{
+  test.setTimeout(90000);
+  await login(page,'nadia@peneliti.example');
+  await page.goto('/peneliti/permohonan/baru');
+  await page.locator('#research-title').fill('Permohonan dataset banjir dua tahun');
+  await page.locator('#research-purpose').fill('Membandingkan kejadian pada 2025 dan 2026.');
+  await page.locator('#research-deadline').fill('2099-12-31');
+  await expect(page.locator('#research-start')).toHaveCount(0);
+  await expect(page.getByRole('combobox',{name:'Wilayah',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Bidang Kedaruratan dan Logistik',exact:true}).click();
+  for(const year of [2025,2026])await page.getByRole('checkbox',{name:`Kejadian Bencana (tabel induk) — ${year}`,exact:true}).check();
+  const summary=page.getByRole('region',{name:'Ringkasan pilihan dataset',exact:true});
+  await expect(summary.getByText('2 dataset dipilih',{exact:true})).toBeVisible();
+  await expect(summary.getByText('30 baris · 2 tahun',{exact:true})).toBeVisible();
+  await page.getByRole('group',{name:'Tahun dataset',exact:true}).getByRole('button',{name:'2025',exact:true}).click();
+  await expect(page.getByRole('checkbox',{name:'Kejadian Bencana (tabel induk) — 2026',exact:true})).toHaveCount(0);
+  await expect(summary.getByText('2 dataset dipilih',{exact:true})).toBeVisible();
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.screenshot({path:test.info().outputPath('annual-request-form-mobile.png'),fullPage:true});
+  await page.setViewportSize({width:1440,height:1050});
+  await page.getByLabel(/^Saya akan menggunakan data/).check();
+  await page.getByRole('button',{name:'Lanjut',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Ringkasan permohonan',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Kirim Permohonan',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Permohonan validasi otomatis',exact:true})).toBeVisible();
-  await expect(page.getByText(/baris data telah divalidasi otomatis pada/)).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Permohonan dataset banjir dua tahun',exact:true})).toBeVisible();
+  const id=new URL(page.url()).pathname.split('/').at(-1)!;
+  await expect(page.getByText(/30 baris data telah divalidasi otomatis/)).toBeVisible();
   const pool=new Pool(),client=await pool.connect();
   try {
-    const {store}=await readStore(client),request=store.research.find(r=>r.title==='Permohonan validasi otomatis')!;
-    const expected=requestedResearchEntries(store,request).map(e=>({id:e.id,version:e.version}));
-    expect(expected.length).toBeGreaterThan(5);
-    expect(request.validation?.rows).toEqual(expected);
-    expect(request.status).toBe('Diajukan');
-    expect(request.access).toBe('Belum Aktif');
+    const {store}=await readStore(client),request=store.research.find(r=>r.id===id)!;
+    expect(request.catalog?.datasets.map(dataset=>dataset.year)).toEqual([2025,2026]);
+    expect(request.catalog?.datasets.reduce((sum,dataset)=>sum+dataset.rowCount,0)).toBe(30);
+    expect(request.status).toBe('Diajukan');expect(request.access).toBe('Belum Aktif');
   }finally{client.release();await pool.end();}
+  expect((await page.request.get(`/api/bpbd/research/${id}/catalog`)).status()).toBe(403);
+  await login(page,'adm@bpbd.example');
+  await page.goto(`/riset/permohonan/${id}`);
+  await expect(page.getByRole('heading',{name:'Keputusan Permohonan Data',exact:true})).toBeVisible();
+  for(const year of [2025,2026]){
+    const region=page.getByRole('region',{name:`Dataset Kejadian Bencana (tabel induk) — ${year}`,exact:true});
+    await expect(region.getByRole('table').locator('tbody tr')).toHaveCount(15);
+  }
+  await page.locator('#grant-end').fill('2099-12-31');
+  await page.locator('#decision-note').fill('Seluruh dataset tahun 2025 dan 2026 disetujui.');
+  await page.getByRole('button',{name:'Setujui Permohonan',exact:true}).click();
+  await expect(page.getByText('Keputusan Admin tersimpan.',{exact:true})).toBeVisible();
+  await login(page,'nadia@peneliti.example');
+  await page.goto(`/peneliti/data/${id}`);
+  for(const year of [2025,2026]){
+    const title=`Kejadian Bencana (tabel induk) — ${year}`;
+    const region=page.getByRole('region',{name:`Dataset ${title}`,exact:true});
+    await expect(region.getByRole('table').locator('tbody tr')).toHaveCount(5);
+    const ready=page.waitForEvent('download');
+    await region.getByRole('button',{name:`Unduh CSV ${title}`,exact:true}).click();
+    const exported=await ready;expect(exported.suggestedFilename()).toBe(`2_1_Kejadian_Bencana_${year}.csv`);
+    const stream=await exported.createReadStream(),chunks:Buffer[]=[];
+    for await(const chunk of stream!)chunks.push(Buffer.from(chunk));
+    const text=Buffer.concat(chunks).toString('utf8');
+    expect(text.split('\r\n')).toHaveLength(16);expect(text).toContain(`KJD-${year}-`);expect(text).not.toContain(`KJD-${year===2025?2026:2025}-`);
+  }
+  await page.screenshot({path:test.info().outputPath('annual-request-approved-data.png'),fullPage:true});
+  await page.getByRole('button',{name:'Kirim Hasil Penelitian',exact:true}).click();
+  await page.getByLabel('Dokumen hasil penelitian').setInputFiles({name:'hasil-tahunan.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF')});
+  await page.locator('#result-summary').fill('Hasil perbandingan kejadian dua tahun.');
+  await page.locator('#result-feedback').fill('Perkuat mitigasi wilayah rawan.');
+  await page.getByRole('button',{name:'Tinjau Hasil',exact:true}).click();
+  await page.getByRole('button',{name:'Kirim Hasil Penelitian',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Hasil Penelitian',exact:true})).toBeVisible();
 });
 
 test('request filters offer three statuses and the researcher can read the rejection reason',async({page})=>{

@@ -1,0 +1,289 @@
+[
+  {
+    "from": "1.2",
+    "field": "kode_kabkota",
+    "to": "REF.1",
+    "target_field": "kode_kabkota",
+    "optional": false
+  },
+  {
+    "from": "1.2",
+    "field": "kode_jenis_bencana",
+    "to": "REF.2",
+    "target_field": "kode_jenis_bencana",
+    "optional": false
+  },
+  {
+    "from": "1.4",
+    "field": "kode_desa",
+    "to": "REF.1",
+    "target_field": "kode_desa",
+    "optional": false
+  },
+  {
+    "from": "1.4",
+    "field": "kode_jenis_bencana",
+    "to": "REF.2",
+    "target_field": "kode_jenis_bencana",
+    "optional": false
+  },
+  {
+    "from": "1.6",
+    "field": "kode_desa",
+    "to": "REF.1",
+    "target_field": "kode_desa",
+    "optional": false
+  },
+  {
+    "from": "1.6",
+    "field": "kode_jenis_bencana",
+    "to": "REF.2",
+    "target_field": "kode_jenis_bencana",
+    "optional": false
+  },
+  {
+    "from": "1.6",
+    "field": "id_kejadian",
+    "to": "2.1",
+    "target_field": "id_kejadian",
+    "optional": true
+  },
+  {
+    "from": "1.7",
+    "field": "kode_jenis_bencana",
+    "to": "REF.2",
+    "target_field": "kode_jenis_bencana",
+    "optional": false
+  },
+  {
+    "from": "2.1",
+    "field": "kode_desa",
+    "to": "REF.1",
+    "target_field": "kode_desa",
+    "optional": false
+  },
+  {
+    "from": "2.1",
+    "field": "kode_jenis_bencana",
+    "to": "REF.2",
+    "target_field": "kode_jenis_bencana",
+    "optional": false
+  },
+  {
+    "from": "2.2",
+    "field": "kode_desa",
+    "to": "REF.1",
+    "target_field": "kode_desa",
+    "optional": false
+  },
+  {
+    "from": "2.2",
+    "field": "id_kejadian",
+    "to": "2.1",
+    "target_field": "id_kejadian",
+    "optional": false
+  },
+  {
+    "from": "2.3",
+    "field": "kode_desa",
+    "to": "REF.1",
+    "target_field": "kode_desa",
+    "optional": false
+  },
+  {
+    "from": "2.3",
+    "field": "id_kejadian",
+    "to": "2.1",
+    "target_field": "id_kejadian",
+    "optional": false
+  },
+  {
+    "from": "2.4",
+    "field": "id_kejadian",
+    "to": "2.1",
+    "target_field": "id_kejadian",
+    "optional": false
+  },
+  {
+    "from": "2.7",
+    "field": "id_kejadian",
+    "to": "2.1",
+    "target_field": "id_kejadian",
+    "optional": false
+  },
+  {
+    "from": "3.1",
+    "field": "kode_desa",
+    "to": "REF.1",
+    "target_field": "kode_desa",
+    "optional": false
+  },
+  {
+    "from": "3.1",
+    "field": "id_kejadian",
+    "to": "2.1",
+    "target_field": "id_kejadian",
+    "optional": false
+  },
+  {
+    "from": "3.2",
+    "field": "kode_desa",
+    "to": "REF.1",
+    "target_field": "kode_desa",
+    "optional": false
+  },
+  {
+    "from": "3.2",
+    "field": "id_kejadian",
+    "to": "2.1",
+    "target_field": "id_kejadian",
+    "optional": false
+  },
+  {
+    "from": "3.3",
+    "field": "kode_desa",
+    "to": "REF.1",
+    "target_field": "kode_desa",
+    "optional": false
+  },
+  {
+    "from": "3.3",
+    "field": "id_kejadian",
+    "to": "2.1",
+    "target_field": "id_kejadian",
+    "optional": false
+  },
+  {
+    "from": "3.4",
+    "field": "kode_kabkota",
+    "to": "REF.1",
+    "target_field": "kode_kabkota",
+    "optional": false
+  },
+  {
+    "from": "3.4",
+    "field": "id_kejadian",
+    "to": "2.1",
+    "target_field": "id_kejadian",
+    "optional": false
+  },
+  {
+    "from": "3.5",
+    "field": "kode_desa",
+    "to": "REF.1",
+    "target_field": "kode_desa",
+    "optional": false
+  },
+  {
+    "from": "3.5",
+    "field": "id_kejadian",
+    "to": "2.1",
+    "target_field": "id_kejadian",
+    "optional": false
+  },
+  {
+    "from": "1.6",
+    "field": "id_dokumen",
+    "to": "1.7",
+    "target_field": "id_dokumen",
+    "optional": true
+  },
+  {
+    "from": "1.7",
+    "field": "id_irbi",
+    "to": "1.2",
+    "target_field": "id_irbi",
+    "optional": true
+  },
+  {
+    "from": "2.1",
+    "field": "id_perangkat_ews",
+    "to": "1.4",
+    "target_field": "id_perangkat",
+    "optional": true
+  },
+  {
+    "from": "2.1",
+    "field": "id_dokumen_kontinjensi",
+    "to": "1.7",
+    "target_field": "id_dokumen",
+    "optional": true
+  },
+  {
+    "from": "2.4",
+    "field": "id_posko",
+    "to": "2.3",
+    "target_field": "id_posko",
+    "optional": false
+  },
+  {
+    "from": "2.4",
+    "field": "id_status",
+    "to": "2.7",
+    "target_field": "id_status",
+    "optional": true
+  },
+  {
+    "from": "3.2",
+    "field": "id_asesmen",
+    "to": "3.1",
+    "target_field": "id_asesmen",
+    "optional": false
+  },
+  {
+    "from": "3.2",
+    "field": "id_anggaran",
+    "to": "3.4",
+    "target_field": "id_anggaran",
+    "optional": false
+  },
+  {
+    "from": "3.2",
+    "field": "id_hunian",
+    "to": "3.3",
+    "target_field": "id_hunian",
+    "optional": true
+  },
+  {
+    "from": "3.3",
+    "field": "id_asesmen",
+    "to": "3.1",
+    "target_field": "id_asesmen",
+    "optional": false
+  },
+  {
+    "from": "3.3",
+    "field": "id_anggaran",
+    "to": "3.4",
+    "target_field": "id_anggaran",
+    "optional": false
+  },
+  {
+    "from": "3.4",
+    "field": "id_status",
+    "to": "2.7",
+    "target_field": "id_status",
+    "optional": true
+  },
+  {
+    "from": "3.5",
+    "field": "id_asesmen",
+    "to": "3.1",
+    "target_field": "id_asesmen",
+    "optional": false
+  },
+  {
+    "from": "3.5",
+    "field": "id_anggaran",
+    "to": "3.4",
+    "target_field": "id_anggaran",
+    "optional": false
+  },
+  {
+    "from": "3.5",
+    "field": "id_perangkat",
+    "to": "1.4",
+    "target_field": "id_perangkat",
+    "optional": true
+  }
+]

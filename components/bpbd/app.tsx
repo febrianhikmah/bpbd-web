@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, BookOpen, ChevronDown, ChevronRight, ClipboardCheck, Database, FileClock, FileText, FlaskConical, FolderOpen, GraduationCap, HelpCircle, LayoutDashboard, LockKeyhole, LogOut, Menu, Settings, Shield, ShieldCheck, Upload, Users, X } from 'lucide-react';
+import { Bell, BookOpen, ChevronDown, ChevronRight, ClipboardCheck, Database, FileClock, FileText, FlaskConical, FolderOpen, GraduationCap, LayoutDashboard, LockKeyhole, LogOut, Menu, Settings, Shield, ShieldCheck, Upload, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
@@ -16,6 +16,9 @@ import { ShowResearchData, AccessDetail, ResearchDetail, ResearchForm, ResearchH
 import { AuditPage, Masters, Permissions, Settings as SettingsPage, UsersPage } from './admin';
 import { AccountStatus, Auth, Help, Profile } from './auth';
 import { ResearchLibrary } from './research-library';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { researchFields } from './research-catalog';
+import sidebarStyles from './app-sidebar.module.css';
 import { canRead, canVisit, sessionUser, formatDate, groups, home, isReviewer, referenceDate, roles, seedStore, type Filters, type Role, type Store } from '@/lib/bpbd/model';
 import { api, RequestError, type Snapshot } from '@/lib/bpbd/api';
 function emptyStore(): Store { const store = seedStore(); return { ...store, users: [], entries: [], research: [], reports: [], imports: [], audit: [] }; }
@@ -133,8 +136,68 @@ export default function BPBDApp() {
  if(!ready)return <div style={{padding:40,maxWidth:1200,margin:'auto'}}><Skeleton className="h-12 w-72 mb-8"/><div className="stats-grid">{[1,2,3,4].map(n=><Skeleton key={n} className="h-36"/>)}</div><Skeleton className="h-72"/><p className="small muted" style={{marginTop:15}}>Memuat ruang kerja BPBD…</p></div>;
  return <AppContext.Provider value={{store,user,role,path,query,navigate,signIn,register,mutate,refresh,dirty,setDirty,filters:filters}}><a className="skip-link" href="#main-content">Lewati ke konten utama</a><Toaster richColors theme="light" position="bottom-right"/>{storageWarning&&<div role="alert" className="notice danger" style={{margin:15}}>{storageWarning}</div>}{publicRoute||!user?<Auth key={path} mode={publicRoute?path.slice(1):'masuk'}/>:<SidebarProvider style={{'--sidebar-width':'240px'} as React.CSSProperties}><AppSidebar/><div className="shell-main"><Header/><main id="main-content" className="content" tabIndex={-1}>{canVisit(store,role,path,user.id)?<RoutePage key={`${user.id}:${role}:${path}`}/>:<SystemPage code="403"/>}<footer className="footer"><span>© 2026 BPBD Kota Semarang · Sistem Terintegrasi</span><span>Waktu Indonesia Barat (WIB)</span></footer></main></div></SidebarProvider>}<AlertDialog open={!!pending} onOpenChange={open=>!open&&setPending(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Perubahan belum disimpan</AlertDialogTitle><AlertDialogDescription>Isian Anda akan hilang jika meninggalkan halaman. Tetap di halaman untuk meninjau dan menyimpan form.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Tetap di Halaman</AlertDialogCancel><AlertDialogAction onClick={()=>{const go=pending;setDirty(false);setPending(null);go?.();}}>Tinggalkan</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></AppContext.Provider>;
 }
-function AppSidebar(){const {role,store,user,path,navigate}=useApp();const {setOpenMobile,isMobile}=useSidebar();const active=user?.status==='Aktif';type Item={label:string;path:string;icon:React.ElementType;count?:number};const menus:Item[]=role==='PEN'?(active?[{label:'Beranda Peneliti',path:'/peneliti',icon:LayoutDashboard},{label:'Data',path:'/peneliti/show-data',icon:Database},{label:'Permohonan Data',path:'/peneliti/permohonan',icon:ClipboardCheck},{label:'Data yang Disetujui',path:'/peneliti/data',icon:ShieldCheck},{label:'Hasil Penelitian',path:'/peneliti/hasil',icon:FileText}]:[{label:'Status Akun',path:'/status-akun',icon:Shield}]):[{label:role==='ADM'?'Dashboard Penelitian':'Dashboard Logistik',path:home(role),icon:LayoutDashboard},...(['PK','KL','RR','SEK'].includes(role)?[{label:'Operasional Bidang',path:'/operasional',icon:Database}]:[])];if(active)menus.push({label:'Library Penelitian',path:'/library-penelitian',icon:BookOpen});const research:Item[]=[...(['ADM','SEK'].includes(role)?[{label:'Permohonan Data',path:'/riset/permohonan',icon:FlaskConical}]:[]),...(role==='SEK'||isReviewer(store,role)?[{label:'Hasil Penelitian',path:'/riset/hasil',icon:GraduationCap}]:[])];const admin:Item[]=role==='ADM'?[{label:'Pengguna',path:'/admin/pengguna',icon:Users},{label:'Persetujuan Akun',path:'/admin/pendaftaran',icon:ClipboardCheck,count:store.users.filter(u=>u.role==='PEN'&&u.status==='Menunggu Persetujuan').length},{label:'Hak Akses',path:'/admin/hak-akses',icon:LockKeyhole},{label:'Master Data',path:'/admin/master',icon:FolderOpen},{label:'Audit Trail',path:'/audit',icon:FileClock},{label:'Pengaturan',path:'/admin/pengaturan',icon:Settings}]:[];function link(item:Item){const selected=item.path==='/peneliti'?path==='/peneliti':item.path.startsWith('/dashboard')?path.startsWith('/dashboard'):path===item.path||path.startsWith(item.path+'/');return <a className={`nav-link ${selected?'active':''}`} href={item.path} key={item.path} aria-current={selected?'page':undefined} onClick={e=>{if(e.ctrlKey||e.metaKey)return;e.preventDefault();navigate(item.path==='/admin/master'?'/admin/master/wilayah':item.path);if(isMobile)setOpenMobile(false);}}><item.icon/><span>{item.label}</span>{!!item.count&&<span className="nav-count">{item.count}</span>}</a>;}
-return <Sidebar><div className="brand"><img src="/logo-bpbd.png" alt="Logo BPBD" width="44" height="44"/><div><strong>BPBD SEMARANG</strong><small>SIAGA · DATA CENTER</small></div>{isMobile&&<button aria-label="Tutup navigasi" className="icon-button" onClick={()=>setOpenMobile(false)}><X size={18}/></button>}</div><SidebarContent className="gap-0"><div className="nav-caption" style={{marginTop:9}}>MENU UTAMA</div><nav aria-label="Menu utama" style={{padding:'0 12px'}}>{menus.map(link)}</nav>{research.length>0&&<><div className="nav-caption">LAYANAN PENELITIAN</div><nav aria-label="Layanan penelitian" style={{padding:'0 12px'}}>{research.map(link)}</nav></>}{admin.length>0&&<><div className="nav-caption">ADMINISTRASI</div><nav aria-label="Administrasi" style={{padding:'0 12px'}}>{admin.map(link)}</nav></>}</SidebarContent><SidebarFooter className="p-0 gap-0"><div className="sidebar-help"><HelpCircle size={19} style={{color:'#647b9f'}}/><strong style={{display:'block',marginTop:8}}>Butuh panduan?</strong><p>Pelajari alur pengelolaan data dan layanan penelitian.</p><button className="text-button" onClick={()=>{navigate('/bantuan');setOpenMobile(false);}}>Buka Pusat Bantuan</button></div><div className="sidebar-bottom"><ShieldCheck size={16}/>Ruang kerja BPBD Kota Semarang</div></SidebarFooter></Sidebar>;
+function AppSidebar(){
+ const {role,store,user,path,navigate}=useApp();
+ const {setOpenMobile,isMobile}=useSidebar();
+ const active=user?.status==='Aktif';
+ type Item={label:string;path:string;icon:React.ElementType;count?:number};
+ const menus:Item[]=role==='PEN'?(active?[
+  {label:'Beranda Peneliti',path:'/peneliti',icon:LayoutDashboard},
+  {label:'Data',path:'/peneliti/show-data',icon:Database},
+  {label:'Permohonan Data',path:'/peneliti/permohonan',icon:ClipboardCheck},
+  {label:'Data yang Disetujui',path:'/peneliti/data',icon:ShieldCheck},
+  {label:'Hasil Penelitian',path:'/peneliti/hasil',icon:FileText},
+ ]:[{label:'Status Akun',path:'/status-akun',icon:Shield}]):[
+  {label:role==='ADM'?'Dashboard Penelitian':'Dashboard Logistik',path:home(role),icon:LayoutDashboard},
+  ...(['PK','KL','RR','SEK'].includes(role)?[{label:'Operasional Bidang',path:'/operasional',icon:Database}]:[]),
+ ];
+ if(active)menus.push({label:'Library Penelitian',path:'/library-penelitian',icon:BookOpen});
+ const research:Item[]=[
+  ...(['ADM','SEK'].includes(role)?[{label:'Permohonan Data',path:'/riset/permohonan',icon:FlaskConical}]:[]),
+  ...(role==='SEK'||isReviewer(store,role)?[{label:'Hasil Penelitian',path:'/riset/hasil',icon:GraduationCap}]:[]),
+ ];
+ const admin:Item[]=role==='ADM'?[
+  {label:'Pengguna',path:'/admin/pengguna',icon:Users},
+  {label:'Persetujuan Akun',path:'/admin/pendaftaran',icon:ClipboardCheck,count:store.users.filter(u=>u.role==='PEN'&&u.status==='Menunggu Persetujuan').length},
+  {label:'Hak Akses',path:'/admin/hak-akses',icon:LockKeyhole},
+  {label:'Master Data',path:'/admin/master',icon:FolderOpen},
+  {label:'Audit Trail',path:'/audit',icon:FileClock},
+  {label:'Pengaturan',path:'/admin/pengaturan',icon:Settings},
+ ]:[];
+ function selected(item:Item){return item.path==='/peneliti'?path==='/peneliti':item.path.startsWith('/dashboard')?path.startsWith('/dashboard'):path===item.path||path.startsWith(item.path+'/');}
+ function link(item:Item,nested=false){
+  const current=selected(item);
+  return <a className={`nav-link ${nested?sidebarStyles.submenuLink:''} ${current?'active':''}`} href={item.path} key={item.path} aria-current={current?'page':undefined} onClick={e=>{
+   if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
+   e.preventDefault();navigate(item.path==='/admin/master'?'/admin/master/wilayah':item.path);
+   if(isMobile)setOpenMobile(false);
+  }}>{!nested&&<item.icon/>}<span>{item.label}</span>{!!item.count&&<span className="nav-count">{item.count}</span>}</a>;
+ }
+ function menu(item:Item){
+  if(item.path!=='/peneliti/show-data')return link(item);
+  return <Collapsible key={item.path} defaultOpen={selected(item)}>
+   <CollapsibleTrigger asChild>
+    <button type="button" className={`nav-link ${sidebarStyles.toggle} ${selected(item)?'active':''}`}>
+     <item.icon/><span>{item.label}</span><ChevronDown className={sidebarStyles.chevron} aria-hidden="true"/>
+    </button>
+   </CollapsibleTrigger>
+   <CollapsibleContent>
+    <div className={sidebarStyles.submenu}>
+     {researchFields.map(field=>link({label:field.name,path:`/peneliti/show-data/${field.slug}`,icon:Database},true))}
+    </div>
+   </CollapsibleContent>
+  </Collapsible>;
+ }
+ return <Sidebar>
+  <div className="brand"><img src="/logo-bpbd.png" alt="Logo BPBD" width="44" height="44"/><div><strong>BPBD SEMARANG</strong><small>SIAGA · DATA CENTER</small></div>{isMobile&&<button aria-label="Tutup navigasi" className="icon-button" onClick={()=>setOpenMobile(false)}><X size={18}/></button>}</div>
+  <SidebarContent className="gap-0">
+   <div className="nav-caption" style={{marginTop:9}}>MENU UTAMA</div>
+   <nav aria-label="Menu utama" style={{padding:'0 12px'}}>{menus.map(menu)}</nav>
+   {research.length>0&&<><div className="nav-caption">LAYANAN PENELITIAN</div><nav aria-label="Layanan penelitian" style={{padding:'0 12px'}}>{research.map(item=>link(item))}</nav></>}
+   {admin.length>0&&<><div className="nav-caption">ADMINISTRASI</div><nav aria-label="Administrasi" style={{padding:'0 12px'}}>{admin.map(item=>link(item))}</nav></>}
+  </SidebarContent>
+  <SidebarFooter className="p-0 gap-0"><div className="sidebar-help"><button className="text-button" onClick={()=>{navigate('/bantuan');setOpenMobile(false);}}>Buka Pusat Bantuan</button></div><div className="sidebar-bottom"><ShieldCheck size={16}/>Ruang kerja BPBD Kota Semarang</div></SidebarFooter>
+ </Sidebar>;
 }
 function Header(){const {role,store,user,navigate}=useApp();const [notifications,setNotifications]=useState(false);const [read,setRead]=useState(false);const name=user!.name;
 const requests=store.research.filter(r=>role==='PEN'?user!.status==='Aktif'&&r.owner===user!.id:['ADM','SEK'].includes(role));
@@ -147,7 +210,7 @@ const notificationsList=role==='ADM'?[
 return <><header className="global-header"><div className="header-context"><SidebarTrigger aria-label="Buka atau tutup navigasi" className="mr-1"/><span>Sistem Informasi Kebencanaan</span><ChevronRight size={13}/><strong>{role==='PEN'?'Area Peneliti':roles[role].short}</strong></div><div className="header-actions"><button className="icon-button" aria-label={`Notifikasi, ${read?0:notificationsList.length} belum dibaca`} style={{position:'relative'}} onClick={()=>setNotifications(true)}><Bell size={19}/>{!read&&notificationsList.length>0&&<span style={{position:'absolute',right:6,top:4,width:7,height:7,borderRadius:'50%',background:'#e88341',border:'1px solid white'}}/>}</button><DropdownMenu><DropdownMenuTrigger asChild><button className="user-info" aria-label="Menu akun"><span className="avatar">{name.split(' ').slice(0,2).map(part=>part[0]).join('')}</span><div style={{textAlign:'left'}}><strong>{name.replace(' (Demo)','')}</strong><small>{roles[role].short}</small></div><ChevronDown size={13}/></button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={()=>navigate('/profil')}>Profil Saya</DropdownMenuItem><DropdownMenuItem onClick={()=>navigate('/bantuan')}>Bantuan</DropdownMenuItem><DropdownMenuSeparator/><DropdownMenuItem onClick={()=>navigate('/masuk')}><LogOut size={15}/>Keluar</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></header><div className="demo-bar"><div className="demo-label"><FlaskConical size={14}/><strong>BPBD TERINTEGRASI</strong><span className="demo-description">Operasional dan layanan penelitian</span></div><div className="demo-controls"><span className="small">{roles[role].short}</span><button className="text-button" onClick={()=>navigate('/masuk')}>Ganti Akun</button></div></div><Sheet open={notifications} onOpenChange={setNotifications}><SheetContent className="p-6 overflow-y-auto"><SheetHeader className="p-0"><SheetTitle>Notifikasi</SheetTitle><SheetDescription>Pembaruan dan pengingat untuk role Anda.</SheetDescription></SheetHeader><button className="text-button" onClick={()=>setRead(true)}>Tandai semua dibaca</button>{notificationsList.length?notificationsList.map(n=><button className="notification" key={n.id} style={{textAlign:'left',width:'100%'}} onClick={()=>{navigate(n.path);setNotifications(false);}}><strong>{n.title}</strong><small>{n.note}</small></button>):<p className="small muted" style={{marginTop:20}}>Tidak ada notifikasi untuk saat ini.</p>}</SheetContent></Sheet></>;}
 function RoutePage(){const {path,role}=useApp();const p=path.split('/').filter(Boolean);if(path==='/operasional')return <OperationalWorkspace/>;if(path==='/logistik')return <LogisticsDashboard/>;if(path==='/'||path.startsWith('/dashboard'))return role==='ADM'?<ResearchAdminDashboard/>:<LogisticsDashboard/>;if(path==='/library-penelitian')return <ResearchLibrary/>;if(path==='/profil')return <Profile/>;if(path==='/bantuan')return <Help/>;if(path==='/status-akun')return <AccountStatus/>;if(['403','404','gangguan'].includes(p[0]))return <SystemPage code={p[0]}/>;
  if(['data','impor','laporan','persetujuan'].includes(p[0]))return role==='ADM'?<SystemPage code="403"/>:<OperationalWorkspace/>;
- if(p[0]==='riset'||p[0]==='peneliti'){const internal=p[0]==='riset';if(!p[1])return internal?<SystemPage code="404"/>:<ResearchHome/>;if(p[1]==='show-data'&&!internal)return <ShowResearchData/>;if(p[1]==='permohonan'){if(p[2]==='baru'||p[3]==='edit')return !internal?<ResearchForm id={p[3]==='edit'?p[2]:undefined}/>:<SystemPage code="404"/>;return p[2]?<ResearchDetail id={p[2]} internal={internal}/>:<ResearchList internal={internal}/>;}if(p[1]==='data'&&!internal)return p[2]?<AccessDetail id={p[2]}/>:<ResearchList access/>;if(p[1]==='hasil'){if(p[2]==='kirim'&&!internal)return <ResultForm id={p[3]}/>;return p[2]?<ResultDetail id={p[2]} internal={internal}/>:<ResearchList internal={internal} results/>;}}
+ if(p[0]==='riset'||p[0]==='peneliti'){const internal=p[0]==='riset';if(!p[1])return internal?<SystemPage code="404"/>:<ResearchHome/>;if(p[1]==='show-data'&&!internal)return p.length>4||(p[2]&&!researchFields.some(field=>field.slug===p[2]))||(p[3]&&!/^[\w-]+$/.test(p[3]))?<SystemPage code="404"/>:<ShowResearchData fieldSlug={p[2]} datasetId={p[3]}/>;if(p[1]==='permohonan'){if(p[2]==='baru'||p[3]==='edit')return !internal?<ResearchForm id={p[3]==='edit'?p[2]:undefined}/>:<SystemPage code="404"/>;return p[2]?<ResearchDetail id={p[2]} internal={internal}/>:<ResearchList internal={internal}/>;}if(p[1]==='data'&&!internal)return p[2]?<AccessDetail id={p[2]}/>:<ResearchList access/>;if(p[1]==='hasil'){if(p[2]==='kirim'&&!internal)return <ResultForm id={p[3]}/>;return p[2]?<ResultDetail id={p[2]} internal={internal}/>:<ResearchList internal={internal} results/>;}}
  if(p[0]==='admin'){if(p[1]==='pengguna')return <UsersPage id={p[2]&&p[2]!=='baru'?p[2]:undefined} create={p[2]==='baru'}/>;if(p[1]==='pendaftaran')return <UsersPage registrations/>;if(p[1]==='hak-akses')return <Permissions/>;if(p[1]==='master')return <Masters type={p[2]||'wilayah'}/>;if(p[1]==='pengaturan')return <SettingsPage/>;if(p[1]==='akses-riset')return <ResearchList internal/>;}
  if(p[0]==='audit')return <AuditPage/>;return <SystemPage code="404"/>;
 }

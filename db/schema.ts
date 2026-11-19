@@ -81,3 +81,7 @@ export const sourceLinks = pgTable('bpbd_source_links', {
 }, t => [primaryKey({columns:[t.source,t.entity,t.sourceId,t.field]}),
   foreignKey({columns:[t.source,t.entity,t.sourceId],foreignColumns:[sourceRecords.source,sourceRecords.entity,sourceRecords.sourceId]}),
   foreignKey({columns:[t.source,t.targetEntity,t.targetId],foreignColumns:[sourceRecords.source,sourceRecords.entity,sourceRecords.sourceId]})]);
+
+export const researchDatasets = pgTable('bpbd_research_datasets', {
+  id: text('id').primaryKey(), data: jsonb('data').notNull(),
+});

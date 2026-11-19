@@ -16,7 +16,9 @@ const role = z.enum(['ADM', 'PK', 'KL', 'RR', 'SEK', 'PEN']);
 const userSchema = z.object({ statement: z.object({ fileId: id, filename: str, uploadedAt: str }).strict().optional(), whatsappConsent: z.boolean().optional(), phone: z.string().max(40).refine(v => !v || !!normalizePhone(v), 'Nomor telepon tidak valid.').optional(), id, name: str.min(1), email: z.string().email().max(254), role, institution: str, status: z.enum(['Aktif', 'Nonaktif', 'Menunggu Persetujuan', 'Perlu Perbaikan', 'Ditolak']), note: str, demoPassword: z.string().max(256) }).strict();
 const resultSchema = z.object({ id, at: str, filename: str, fileId: id, summary: str, feedback: str, review: str, note: str }).strict();
 const decisionSchema = z.object({ status: z.enum(['Disetujui', 'Ditolak']), note: str, groups: z.array(str), download: z.boolean().optional(), accessEnd: str.optional(), validatedRows: z.array(z.object({ id, version: z.number().int().positive() }).strict()).optional() }).strict();
-const researchSchema = z.object({ validation: z.object({ at: str, rows: z.array(z.object({ id, version: z.number().int().positive() }).strict()) }).strict().optional(), id, owner: id, title: str.min(1), institution: str, purpose: str, requestedGroups: z.array(str).min(1), area: str, start: str, end: str, deadline: str, status: z.enum(researchStatuses), access: str, accessEnd: str, download: z.boolean(), decisions: z.record(decisionSchema), history: z.array(event), versions: z.array(resultSchema), extension: z.object({ date: str, reason: str }).strict().optional(), supportingId: id.optional(), supportingName: str.optional(), complete: z.boolean().optional() }).strict();
+const catalogDatasetScope = z.object({ id, code: str, title: str, field: z.enum(['PK','KL','RR']), year: z.number().int().min(2000).max(2100), rowCount: z.number().int().positive(), version: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+const catalogRequestSchema = z.object({ datasets: z.array(catalogDatasetScope).min(1).max(28), validatedAt: str, grant: z.object({ at: str, datasets: z.array(catalogDatasetScope).min(1).max(28) }).strict().optional() }).strict();
+const researchSchema = z.object({ catalog: catalogRequestSchema.optional(), validation: z.object({ at: str, rows: z.array(z.object({ id, version: z.number().int().positive() }).strict()) }).strict().optional(), id, owner: id, title: str.min(1), institution: str, purpose: str, requestedGroups: z.array(str).min(1), area: str, start: str, end: str, deadline: str, status: z.enum(researchStatuses), access: str, accessEnd: str, download: z.boolean(), decisions: z.record(decisionSchema), history: z.array(event), versions: z.array(resultSchema), extension: z.object({ date: str, reason: str }).strict().optional(), supportingId: id.optional(), supportingName: str.optional(), complete: z.boolean().optional() }).strict();
 
 export function scopeStore(store: Store, actor: User): Store {
   const scoped = structuredClone(store);
@@ -48,7 +50,7 @@ function history(before: Entry['history'], after: Entry['history'], actor: User)
   requireThat(after.length >= before.length && equal(after.slice(0, before.length), before), 'Riwayat lama tidak dapat diubah.');
   return [...before, ...after.slice(before.length).map(e => ({ ...e, at: timestamp(), actor: actor.name }))];
 }
-function validateResearch(store: Store, actor: User, old: Research | undefined, next: Research) {
+function validateResearch(store: Store, actor: User, old: Research | undefined, next: Research, allowLegacyResearchCreation = false) {
   // Historical statuses may remain on existing requests. Accept them only
   // unchanged; submissions and new Admin decisions still use current statuses.
   const legacyStatuses = ['Draf', 'Dalam Peninjauan', 'Perlu Perbaikan', 'Disetujui Sebagian'];
@@ -56,8 +58,12 @@ function validateResearch(store: Store, actor: User, old: Research | undefined, 
     ? researchSchema.extend({ status: z.literal(old.status) })
     : researchSchema;
   schema.parse(next);
+  requireThat(old || allowLegacyResearchCreation, 'Ajukan permohonan baru melalui form dataset tahunan.');
   let automaticValidation = false;
-  requireThat(new Set(next.requestedGroups).size === next.requestedGroups.length && next.requestedGroups.every(g => !!groups[g] && groups[g].role !== 'SEK'), 'Kelompok data tidak valid.', 400);
+  if (next.catalog || old?.catalog) {
+    requireThat(old?.catalog && next.catalog && equal(old.catalog, next.catalog) && equal(old.requestedGroups, next.requestedGroups), 'Cakupan dataset tahunan ditetapkan oleh server. Gunakan form Permohonan Data.');
+    requireThat(equal(old.decisions, next.decisions), 'Keputusan dataset tahunan harus melalui pemeriksaan Admin di katalog.');
+  } else requireThat(new Set(next.requestedGroups).size === next.requestedGroups.length && next.requestedGroups.every(g => !!groups[g] && groups[g].role !== 'SEK'), 'Kelompok data tidak valid.', 400);
   requireThat(next.start <= next.end && next.title.trim() && next.purpose.trim(), 'Isi permohonan tidak valid.', 400);
   if (actor.role === 'PEN') {
     requireThat(actor.status === 'Aktif' && next.owner === actor.id && (!old || old.owner === actor.id));
@@ -114,7 +120,7 @@ function validateResearch(store: Store, actor: User, old: Research | undefined, 
 
 // Clients send their visible snapshot. Only validated differences are merged
 // into the complete server state; hidden records can never be overwritten.
-export function mergeStore(store: Store, submitted: Store, actor: User, action: string, object: string): Store {
+export function mergeStore(store: Store, submitted: Store, actor: User, action: string, object: string, options: { allowLegacyResearchCreation?: boolean } = {}): Store {
   requireThat(submitted && typeof submitted === 'object', 'Data tidak valid.', 400);
   const visible = scopeStore(store, actor);
   const next = structuredClone(store);
@@ -145,7 +151,7 @@ export function mergeStore(store: Store, submitted: Store, actor: User, action: 
         requireThat(actor.status === 'Aktif');
         if (name === 'entries') {
           throw new ApiError(403, 'Gunakan modul Operasional atau Logistik untuk pencatatan baru. Dataset penelitian lama tetap dipertahankan.');
-        } else if (name === 'research') validateResearch(store, actor, old as Research | undefined, row as Research);
+        } else if (name === 'research') validateResearch(store, actor, old as Research | undefined, row as Research, options.allowLegacyResearchCreation === true);
         else if (name === 'reports') {
           const report = row as Store['reports'][number];
           requireThat(!old && canRead(actor.role, report.group));
