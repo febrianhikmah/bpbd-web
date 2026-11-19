@@ -1,33 +1,43 @@
-# Dummy penelitian terbaru — 17 November 2026
+# Dummy aktivitas peneliti — 19 November 2026
 
-Data permohonan, hasil, lampiran penelitian, dan arsip permintaan lama K1 di PostgreSQL lokal telah diganti sesuai permintaan pengguna. Akun/login, dataset penelitian, dan seluruh data operasional/logistik dipertahankan. Pemeriksaan hash sebelum dan setelah transaksi memastikan data tersebut tidak berubah. Audit lama dipertahankan sebagai riwayat, dengan tambahan catatan reset.
+Enam permohonan dummy lama diganti dengan enam permohonan yang memakai katalog dataset tahunan terbaru. Semua pengajuan dimiliki akun aktif Nadia Pramesti (Demo), `PEN-001`. Sandi, status akun, dan surat pernyataan pendaftaran tetap dipertahankan.
 
-Cadangan sebelum reset ada di `backups/reset-penelitian-2026-11-17T07-50-51-102Z/before.dump`, beserta salinan penelitian sebelumnya dan laporan penggantian. Folder backups diabaikan Git.
+Setiap pilihan merujuk satu dataset untuk satu tahun. Seluruh skenario memakai tabel 2025 dan 2026 secara terpisah, mencakup ketiga bidang dan seluruh 28 dataset tahunan. Referensi wilayah dan jenis bencana tetap digunakan di belakang layar.
 
-## Skenario yang tersedia
+## Skenario demo
 
-Seluruh permohonan baru dimiliki peneliti aktif yang sudah ada (`nadia@peneliti.example` pada database saat penggantian). Sandi dan status akun tidak diubah. Judul ditandai **[DUMMY]**. Dokumen hasil adalah PDF sintetis yang diberi label DUMMY, bukan laporan resmi.
+| ID | Permohonan | Dataset tahunan | Keputusan | Hasil | PDF |
+| --- | --- | ---: | --- | --- | ---: |
+| RSET-DUMMY-001 | Pemetaan risiko dan kesiapsiagaan masyarakat 2025–2026 | 4 | Diajukan | Belum | 0 |
+| RSET-DUMMY-002 | Perbandingan kejadian dan dampak bencana 2025–2026 | 4 | Disetujui | Belum | 0 |
+| RSET-DUMMY-003 | Permohonan data bantuan rumah di luar tujuan penelitian | 2 | Ditolak | Belum | 0 |
+| RSET-DUMMY-004 | Evaluasi logistik, posko, dan tanggap darurat 2025–2026 | 6 | Disetujui | Sudah | 1 |
+| RSET-DUMMY-005 | Kajian rehabilitasi dan pemulihan pascabencana 2025–2026 | 8 | Disetujui | Sudah | 2 |
+| RSET-DUMMY-006 | Kesiapan EWS dan dokumen kontinjensi lintas bidang 2025–2026 | 6 | Diajukan | Belum | 0 |
 
-| ID | Contoh | Keputusan | Hasil | Dokumen |
-| --- | --- | --- | --- | ---: |
-| RSET-DUMMY-001 | Edukasi dan kesiapsiagaan masyarakat | Diajukan | Belum | 0 |
-| RSET-DUMMY-002 | Kejadian dan korban banjir di Genuk | Disetujui | Belum | 0 |
-| RSET-DUMMY-003 | Kajian risiko di luar kebutuhan | Ditolak | Belum | 0 |
-| RSET-DUMMY-004 | Distribusi bantuan dan persediaan logistik | Disetujui | Sudah | 1 |
-| RSET-DUMMY-005 | Mitigasi banjir dan wilayah rawan | Disetujui | Sudah | 2 |
-| RSET-DUMMY-006 | Kerusakan dan pemulihan fasilitas | Diajukan | Belum | 0 |
+Semua judul diberi awalan `[DUMMY]`. Beberapa dataset dipakai oleh lebih dari satu penelitian; sumber dataset tidak diduplikasi. Setiap tabel tahunan berisi 15 baris.
 
-Persetujuan mengikuti satu keputusan ADM untuk seluruh dataset dan langsung memberi akses unduh. Permohonan diajukan/ditolak tidak dapat mengunduh. Hasil otomatis berstatus Sudah setelah pengiriman sah. Library menampilkan dua penelitian dan tiga versi PDF, tersedia bagi semua akun aktif yang login. RSET-DUMMY-002 bisa dipakai untuk mencoba mengirim hasil sendiri; 001 dan 006 untuk mencoba persetujuan/penolakan Admin.
+001 dan 006 dapat dipakai untuk demo pemeriksaan Admin. 002 sudah memiliki izin akses dan unduh, tetapi belum mengirim hasil sehingga bisa dipakai mencoba unggah. 003 menunjukkan penolakan karena data yang diminta tidak sesuai tujuan. 004 dan 005 menyediakan contoh Library serta dua versi hasil pada penelitian yang sama.
 
-Data dibuat melalui validasi backend yang sama dengan aplikasi, termasuk ID/versi dataset yang diizinkan. Tanggal akses dan tenggat dibuat relatif saat reset. Contoh ini tidak memerlukan perubahan sandi atau pengiriman WhatsApp.
+Persetujuan hanya oleh Admin dan berlaku untuk seluruh dataset dalam permohonan. Permohonan diajukan/ditolak tidak memperoleh akses unduh. Saat diakses, ID dan versi sumber diperiksa melalui backend yang sama dengan aplikasi. Tenggat dibuat 60 hari dan masa akses 90 hari dari tanggal reset agar contoh masih dapat dipakai saat demo.
+
+Hasil otomatis berstatus **Sudah** setelah pengunggahan yang sah. Library memuat dua penelitian dan tiga versi PDF yang bisa dilihat serta diunduh semua akun aktif yang login. Seluruh PDF sintetis berlabel DUMMY, bukan laporan resmi.
+
+## Cadangan dan data yang dipertahankan
+
+Reset lokal berhasil pada database `bpbd_local_integrasi`. Cadangan lengkap PostgreSQL ada di `backups/reset-penelitian-2026-11-18T21-23-13-596Z/before.dump`, disertai `before-research.json` dan `report.json`. Folder cadangan diabaikan Git. Nama folder memakai waktu UTC; tanggal lokal reset adalah 19 November 2026.
+
+Pemeriksaan hash sebelum dan setelah transaksi memastikan akun, data operasional/logistik, seluruh arsip sumber Kelompok 1/3, dan 30 dataset penelitian berisi total 602 baris tidak berubah. Berkas surat pendaftaran dan lampiran yang dirujuk data operasional/laporan dilindungi dari penghapusan. Audit lama dipertahankan dan ditambah riwayat reset. Enam permohonan lama beserta lima dokumen penelitiannya diganti dengan enam permohonan dan tiga PDF baru.
+
+Instalasi lain yang menunjuk database lokal yang sama juga akan membaca permohonan baru ini. Reset tidak mengirim pesan WhatsApp.
 
 ## Mengulang penggantian
 
 ```powershell
-node --env-file-if-exists=.env.local scripts/reset-research-demo.ts
-node --env-file-if-exists=.env.local scripts/reset-research-demo.ts --apply
+npm run research:reset-demo
+npm run research:reset-demo -- --apply
 ```
 
-Perintah pertama hanya memperlihatkan rencana. `--apply` kembali mengganti seluruh data penelitian saat itu setelah membuat cadangan; jalankan hanya bila memang hendak menghapus hasil/perubahan penelitian yang sudah dibuat. Script membatasi target ke PostgreSQL lokal, mempertahankan berkas yang dirujuk dataset/laporan operasional, dan membatalkan transaksi bila data di luar penelitian berubah.
+Perintah pertama hanya menampilkan rencana tanpa menyimpan perubahan. `--apply` membuat cadangan lalu mengganti aktivitas penelitian saat itu, termasuk hasil/revisi yang dibuat setelah demo. Script menolak perubahan jika ada permohonan tanpa awalan `[DUMMY]`, membatasi target pada PostgreSQL lokal, dan membatalkan transaksi bila data yang dilindungi berubah. Jangan jalankan ulang apabila ingin mempertahankan aktivitas demo yang sudah dicoba.
 
-Database saat reset adalah `bpbd_local_integrasi`. Instalasi lain yang menunjuk database yang sama juga membaca data penelitian yang baru ini.
+Generator menggunakan layanan pengajuan, keputusan Admin, dan pengiriman hasil yang sama dengan aplikasi. Uji PostgreSQL terpisah memeriksa keenam skenario, cakupan seluruh dataset tahunan, izin akses, PDF/Library, serta kemampuan unggah hasil pada permohonan yang disetujui.

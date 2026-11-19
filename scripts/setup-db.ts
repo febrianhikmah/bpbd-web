@@ -4,6 +4,8 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { getDb, getPool } from '../db/index.ts';
 import { seedStore } from '../lib/bpbd/model.ts';
 import { writeStore } from '../lib/server/repository.ts';
+import { installResearchDatasets } from '../lib/server/research-datasets.ts';
+import type { ResearchDataset } from '../lib/bpbd/research-datasets.ts';
 
 async function main() {
   // Cloud databases are provisioned by the provider; do not CREATE DATABASE there.
@@ -31,6 +33,8 @@ async function main() {
       await writeStore(client, null, seedStore());
       console.log('Akun dan data contoh awal disimpan. Password akun disimpan sebagai hash scrypt.');
     } else console.log('Data awal sudah ada; seed tidak diulang.');
+    const catalog = JSON.parse(await readFile('data/research/datasets.json', 'utf8')) as { datasets: ResearchDataset[] };
+    await installResearchDatasets(client, catalog.datasets);
     await client.query('COMMIT');
     console.log('Skema PostgreSQL siap digunakan.');
   } catch (error) { await client.query('ROLLBACK'); throw error; }

@@ -30,21 +30,13 @@ test('Approval must cover every requested dataset before data can be accessed', 
   assert.equal(researchDataValidated(s,r),false);
   assert.equal(authorizedResearchEntries(s,r,r.owner).length,0);
 });
-test('Submission automatically validates all rows and rejects the removed request statuses',()=>{
-  const store=seedStore(),actor=store.users.find(u=>u.id==='PEN-001');
+test('New submissions cannot use the retired legacy group payload',()=>{
+  const store=seedStore(),actor=store.users.find(user=>user.id==='PEN-001');
   const request={...structuredClone(store.research[0]),id:'RSET-AUTO',area:'all',requestedGroups:['kejadian','mitigasi'],status:'Diajukan',access:'Belum Aktif',download:false,decisions:{},history:[],versions:[]};
   const submitted=scopeStore(store,actor);submitted.research.push(request);
-  const saved=mergeStore(store,submitted,actor,'Permohonan diajukan',request.id).research.find(r=>r.id===request.id);
-  const expected=requestedResearchEntries(store,request).map(e=>({id:e.id,version:e.version}));
-  assert.ok(expected.length>5);assert.deepEqual(saved.validation.rows,expected);
-  assert.equal(saved.history.at(-1).actor,'Sistem');assert.equal(saved.status,'Diajukan');assert.equal(saved.access,'Belum Aktif');
-  for(const status of ['Draf','Dalam Peninjauan','Perlu Perbaikan','Disetujui Sebagian']) {
-    const invalid=structuredClone(submitted);invalid.research.at(-1).status=status;
-    assert.throws(()=>mergeStore(store,invalid,actor,'Status lama',request.id));
-  }
-  submitted.research.at(-1).validation={at:'fake',rows:[]};
-  assert.throws(()=>mergeStore(store,submitted,actor,'Palsu',request.id),/dibuat otomatis/);
+  assert.throws(()=>mergeStore(store,submitted,actor,'Permohonan diajukan',request.id),/form dataset tahunan/);
 });
+
 test('Only Admin decides all requested datasets, with canonical row validation and immediate download', () => {
   const s=seedStore(),actor=s.users.find(u=>u.role==='ADM');
   for(const refs of [undefined,[],[{id:'UNRELATED',version:999}]]){

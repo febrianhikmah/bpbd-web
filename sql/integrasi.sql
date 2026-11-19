@@ -44,3 +44,7 @@ CREATE TABLE IF NOT EXISTS bpbd_source_links (
   FOREIGN KEY(source,entity,source_id) REFERENCES bpbd_source_records(source,entity,source_id),
   FOREIGN KEY(source,target_entity,target_id) REFERENCES bpbd_source_records(source,entity,source_id)
 );
+
+CREATE TABLE IF NOT EXISTS bpbd_research_datasets (
+  id text PRIMARY KEY, data jsonb NOT NULL
+);

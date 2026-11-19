@@ -3,7 +3,7 @@ import { approvedGroups, authorizedResearchEntries, timestamp, type Research, ty
 
 export type ResearchDemoFile = { id: string; owner: string; name: string; content: Buffer };
 
-function pdf(lines: string[]) {
+export function researchDemoPdf(lines: string[]) {
   const safe = (s: string) => s.normalize('NFKD').replace(/[^\x20-\x7E]/g, ' ').replace(/[\\()]/g, '\\$&');
   const stream = 'BT /F1 11 Tf 16 TL 45 790 Td\n' + lines.map(s => `(${safe(s)}) Tj T*`).join('\n') + '\nET';
   const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Count 1 /Kids [4 0 R] >>', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>', `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`];
@@ -24,7 +24,7 @@ export function createResearchDemo(store: Store, today: string) {
   const files: ResearchDemoFile[] = [];
   function mutate(actor: User, id: string, action: string, update: (snapshot: Store) => void) {
     const snapshot = scopeStore(next, actor); update(snapshot);
-    next = mergeStore(next, snapshot, actor, action, id);
+    next = mergeStore(next, snapshot, actor, action, id, { allowLegacyResearchCreation: true });
   }
   const scenarios = [
     { title: 'Kajian edukasi dan kesiapsiagaan masyarakat', groups: ['edukasi','risiko'], state: 'Diajukan', versions: 0 },
@@ -55,7 +55,7 @@ export function createResearchDemo(store: Store, today: string) {
     for (let version = 1; version <= scenario.versions; version++) {
       const fileId = `FILE-DUMMY-HASIL-${index + 1}-V${version}`, name = `hasil-penelitian-dummy-${index + 1}-v${version}.pdf`;
       const summary = `Contoh hasil ${scenario.title.toLowerCase()}, versi ${version}. Seluruh temuan dan dokumen ini bersifat dummy untuk demonstrasi aplikasi.`;
-      files.push({ id: fileId, owner: owner.id, name, content: pdf([
+      files.push({ id: fileId, owner: owner.id, name, content: researchDemoPdf([
         'DOKUMEN HASIL PENELITIAN DUMMY', 'BPBD - Demonstrasi layanan penelitian', '',
         scenario.title, `Nomor permohonan: ${id}`, `Versi: ${version} | Tanggal: ${today}`, '',
         'Dokumen sintetis untuk mencoba unduh dan arsip penelitian.', 'Bukan laporan resmi atau hasil penelitian sesungguhnya.', '',

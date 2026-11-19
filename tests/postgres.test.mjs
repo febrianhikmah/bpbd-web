@@ -1,6 +1,6 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { spawn, execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
@@ -215,6 +215,77 @@ test('Disabling the demo feature permits registration without a letter',async()=
   const registered=await ctx.post('/api/bpbd/register',{data:{phone:'081234567890',name:'Demo Tanpa Surat',email:'tanpasurat@contoh.test',institution:'Demo',password:'TanpaSurat123!',consent:true}});
   assert.equal(registered.status(),201,await registered.text());assert.equal((await registered.json()).store.users[0].statement,undefined);
  }finally{await ctx.dispose();child.kill();await Promise.race([new Promise(resolve=>child.once('exit',resolve)),delay(5000)]);}
+});
+
+test('Research dataset catalog is authenticated, persistent, complete and separated by year',async()=>{
+  const anon=await context();assert.equal((await anon.get('/api/bpbd/research-datasets')).status(),401);
+  const researcher=await login('nadia@peneliti.example');
+  const res=await researcher.get('/api/bpbd/research-datasets');assert.equal(res.status(),200);
+  const catalog=await res.json();assert.equal(catalog.length,28);assert.ok(catalog.every(d=>d.field!==null&&d.year!==null&&!('rows'in d)));
+  const source=JSON.parse(readFileSync('data/research/datasets.json','utf8')).datasets;
+  assert.equal((await testPool.query('SELECT count(*)::int AS count FROM bpbd_research_datasets')).rows[0].count,30);
+  for(const expected of source){
+    const response=await researcher.get(`/api/bpbd/research-datasets/${expected.id}`);
+    if(expected.field===null){assert.equal(response.status(),404);continue;}
+    assert.equal(response.status(),200);assert.deepEqual(await response.json(),expected);
+  }
+  assert.equal((await researcher.get('/api/bpbd/research-datasets/not-found')).status(),404);
+  const admin=await login('adm@bpbd.example'),snapshot=await state(admin);
+  const pending=snapshot.store.users.find(u=>u.role==='PEN'&&u.status==='Menunggu Persetujuan');assert.ok(pending);
+  const waiting=await login(pending.email);
+  assert.equal((await waiting.get('/api/bpbd/research-datasets')).status(),403);
+  assert.equal((await waiting.get(`/api/bpbd/research-datasets/${source[0].id}`)).status(),403);
+  const {installResearchDatasets}=await import('../lib/server/research-datasets.ts');
+  const client=await testPool.connect();
+  try {assert.deepEqual(await installResearchDatasets(client,source),{inserted:0,retained:30});}
+  finally {client.release();}
+});
+
+test('Annual requests enforce catalog years, Admin decisions and dataset downloads',async()=>{
+  const {annualRequestsTest}=await import('./annual-requests-postgres.mjs');
+  await annualRequestsTest({assert,context,login,state,save,pool:testPool});
+});
+
+test('Annual demo creates six canonical requests without changing catalog or account data',async()=>{
+  const {createAnnualResearchDemo}=await import('../lib/server/research-catalog-demo.ts');
+  const {catalogRequestData}=await import('../lib/server/research-catalog-requests.ts');
+  const {catalogToday}=await import('../lib/bpbd/research-datasets.ts');
+  const {researchLibrary}=await import('../lib/bpbd/research-library.ts');
+  const {mergeStore,scopeStore}=await import('../lib/server/policy.ts');
+  const client=await testPool.connect();
+  try{
+    const {store}=await (await import('../lib/server/repository.ts')).readStore(client);
+    const before=structuredClone(store),catalogBefore=(await client.query('SELECT data FROM bpbd_research_datasets ORDER BY id')).rows;
+    const generated=await createAnnualResearchDemo(client,store,catalogToday()),{next,files}=generated;
+    assert.deepEqual(store,before);assert.deepEqual(next.users,store.users);assert.deepEqual(next.entries,store.entries);
+    assert.equal(next.research.length,6);assert.equal(generated.ownerId,'PEN-001');
+    assert.equal(next.research.filter(r=>r.status==='Diajukan').length,2);
+    assert.equal(next.research.filter(r=>r.status==='Disetujui').length,3);
+    assert.equal(next.research.filter(r=>r.status==='Ditolak').length,1);
+    const sourceIds=catalogBefore.map(row=>row.data).filter(dataset=>dataset.field!==null).map(dataset=>dataset.id).sort();
+    assert.deepEqual([...new Set(next.research.flatMap(r=>r.requestedGroups))].sort(),sourceIds);
+    const actor=next.users.find(u=>u.id===generated.ownerId);
+    for(const request of next.research){
+      assert.ok(request.catalog);assert.equal(request.owner,actor.id);assert.ok(request.title.startsWith('[DUMMY]'));
+      assert.deepEqual([...new Set(request.catalog.datasets.map(dataset=>dataset.year))].sort(),[2025,2026]);
+      assert.ok(request.catalog.datasets.every(dataset=>dataset.field!==null&&dataset.rowCount===15&&dataset.version.length===64));
+      if(request.status==='Disetujui'){
+        const allowed=await catalogRequestData(client,next,actor,request.id,true);
+        assert.equal(allowed.datasets.length,request.requestedGroups.length);assert.equal(request.download,true);
+        assert.deepEqual(Object.keys(request.decisions),['ADM']);
+      }else{
+        await assert.rejects(()=>catalogRequestData(client,next,actor,request.id,true),error=>error.status===403);
+        assert.equal(request.download,false);assert.equal(request.catalog.grant,undefined);
+      }
+    }
+    assert.equal(files.length,3);assert.ok(files.every(file=>file.content.subarray(0,5).toString()==='%PDF-'&&file.content.toString().includes('DUMMY')));
+    const library=researchLibrary(next,new Set(files.map(file=>file.id)));
+    assert.equal(library.length,2);assert.equal(library.flatMap(item=>item.versions).length,3);
+    const approved=next.research.find(r=>r.status==='Disetujui'&&!r.versions.length),snapshot=scopeStore(next,actor),editable=snapshot.research.find(r=>r.id===approved.id);
+    editable.versions.push({id:'VER-DEMO-CHECK',at:'',fileId:'FILE-DEMO-CHECK',filename:'hasil.pdf',summary:'Hasil',feedback:'Saran',review:'Sudah',note:''});editable.complete=true;
+    assert.equal(mergeStore(next,snapshot,actor,'Kirim hasil',approved.id).research.find(r=>r.id===approved.id).versions.length,1);
+    assert.deepEqual((await client.query('SELECT data FROM bpbd_research_datasets ORDER BY id')).rows,catalogBefore);
+  }finally{client.release();}
 });
 
 test('Browser workflows use PostgreSQL, including login, forms, import, reports and research', { timeout: 360000 }, async () => {

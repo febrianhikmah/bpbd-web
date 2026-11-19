@@ -1,0 +1,9 @@
+.toggle { text-align: left; }
+.toggle > svg:first-child { flex-shrink: 0; }
+.chevron { margin-left: auto; flex-shrink: 0; transition: transform .15s; }
+.toggle[data-state='open'] .chevron { transform: rotate(180deg); }
+.toggle:focus-visible, .submenuLink:focus-visible { outline: 2px solid #c65a20; outline-offset: 2px; }
+.submenu { display: grid; gap: 4px; margin: 4px 0 8px 21px; padding-left: 8px; border-left: 1px solid var(--border); }
+.submenuLink { padding: 10px 11px; font-size: 13px; }
+.submenuLink span { min-width: 0; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .chevron { transition: none; } }

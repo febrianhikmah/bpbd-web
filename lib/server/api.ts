@@ -9,6 +9,8 @@ import { ApiError, mergeStore, requireThat, scopeStore } from './policy.ts';
 import { readStore, writeStore } from './repository.ts';
 import { tokenHash, verifyPassword } from './passwords.ts';
 import { researchLibrary } from '../bpbd/research-library.ts';
+import { readResearchDatasets, readResearchDataset } from './research-datasets.ts';
+import { submitCatalogRequest, decideCatalogRequest, catalogRequestData, catalogDatasetCsv } from './research-catalog-requests.ts';
 import { statementEnabled, statementLimitMb, statementTemplate, checkStatement } from './research-statement.ts';
 
 const cookieName = 'bpbd_session';
@@ -159,6 +161,31 @@ export async function handleApi(request: Request) {
         await writeStore(client,store,next);
         await client.query('INSERT INTO bpbd_files(id,owner_id,name,mime,content) VALUES($1,$2,$3,$4,$5)',[target.statement.fileId,user.id,name,mime,content]);
         result = response({store:scopeStore(next,target),revision:snapshot.revision+1,userId:user.id});
+      } else if (path === 'catalog-requests' && request.method === 'POST') {
+        const submitted = await submitCatalogRequest(client, store, user, await json(request));
+        if (submitted.created) await writeStore(client, store, submitted.next);
+        result = response({ id: submitted.request.id }, submitted.created ? 201 : 200);
+      } else if (/^research\/[\w-]+\/catalog-decision$/.test(path) && request.method === 'POST') {
+        const next = await decideCatalogRequest(client, store, user, path.split('/')[1], await json(request));
+        await writeStore(client, store, next);
+        result = response({ id: path.split('/')[1] });
+      } else if (/^research\/[\w-]+\/catalog$/.test(path) && request.method === 'GET') {
+        const data = await catalogRequestData(client, store, user, path.split('/')[1]);
+        result = response({ datasets: data.datasets });
+      } else if (/^research\/[\w-]+\/catalog\/[\w-]+\/csv$/.test(path) && request.method === 'GET') {
+        const [,id,,datasetId] = path.split('/');
+        const data = await catalogRequestData(client, store, user, id, true);
+        const dataset = data.datasets.find(dataset => dataset.id === datasetId);
+        requireThat(dataset, 'Dataset tidak termasuk dalam persetujuan permohonan.', 403);
+        result = new Response(catalogDatasetCsv(dataset), { headers: { 'Content-Type':'text/csv;charset=utf-8', 'Content-Disposition':`attachment; filename="${dataset.id}.csv"`, 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff' } });
+      } else if (path === 'research-datasets' && request.method === 'GET') {
+        requireThat(user.status === 'Aktif', 'Katalog penelitian hanya tersedia untuk akun aktif.');
+        result = response(await readResearchDatasets(client));
+      } else if (/^research-datasets\/[\w-]+$/.test(path) && request.method === 'GET') {
+        requireThat(user.status === 'Aktif', 'Katalog penelitian hanya tersedia untuk akun aktif.');
+        const dataset = await readResearchDataset(client, path.split('/')[1]);
+        requireThat(dataset, 'Dataset penelitian tidak ditemukan.', 404);
+        result = response(dataset);
       } else if (path === 'library' && request.method === 'GET') {
         requireThat(user.status === 'Aktif', 'Library hanya tersedia untuk akun aktif.');
         const ids = store.research.flatMap(r => r.versions.map(v => v.fileId));
